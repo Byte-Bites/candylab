@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>おえかきキャンディラボ 🍬</title>
+<style>
+:root{
+  --cream:#FFF7E8;        /* バニラクリーム */
+  --choco:#4A2C1A;        /* チョコレート（文字） */
+  --orange:#FF7A2E;       /* キャンディオレンジ（ペン色と同一） */
+  --orange-deep:#D95F10;
+  --berry:#F45D8C;        /* ラズベリー */
+  --berry-deep:#C93E6B;
+  --mint:#33B08C;         /* チョコミント */
+  --mint-deep:#1F8A6B;
+  --soda:#59C3E8;         /* ソーダブルー */
+  --soda-deep:#2E9CC6;
+  --lemon:#FFD24D;        /* レモンドロップ */
+  --white:#FFFFFF;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+body{
+  font-family:"Hiragino Maru Gothic ProN","ヒラギノ丸ゴ ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;
+  background:linear-gradient(180deg,#FFE9F3 0%,var(--cream) 46%,#E3F7EE 100%);
+  color:var(--choco);
+  display:flex;flex-direction:column;
+  height:100dvh;
+  touch-action:manipulation;
+  user-select:none;-webkit-user-select:none;
+  overflow:hidden;
+}
+
+/* ---------- ふわふわ背景キャンディ ---------- */
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+#bg span{
+  position:absolute;font-size:34px;opacity:.16;
+  animation:floaty var(--d,22s) ease-in-out infinite alternate;
+}
+@keyframes floaty{
+  from{transform:translateY(0) rotate(-8deg)}
+  to{transform:translateY(-46px) rotate(10deg)}
+}
+
+header,main,#dock{position:relative;z-index:1}
+
+/* ---------- ヘッダー（看板ロゴ＋おとな用スイッチ） ---------- */
+header{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 16px 6px;flex-wrap:wrap;
+}
+#logo{display:flex;align-items:baseline;line-height:1}
+#logo span{
+  display:inline-block;
+  font-size:clamp(20px,3vw,30px);font-weight:900;letter-spacing:.02em;
+  text-shadow:0 2px 0 rgba(74,44,26,.14);
+  animation:bob 2.6s ease-in-out calc(var(--i)*0.13s) infinite;
+}
+#logo span:nth-child(4n+1){color:var(--orange)}
+#logo span:nth-child(4n+2){color:var(--berry)}
+#logo span:nth-child(4n+3){color:var(--mint)}
+#logo span:nth-child(4n+4){color:var(--soda)}
+#logo .emo{text-shadow:none;font-size:clamp(22px,3.2vw,32px)}
+#logo small{
+  font-size:11px;font-weight:normal;color:#B08968;margin-left:10px;
+  animation:none;text-shadow:none;
+}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+
+.ops{display:flex;gap:8px;align-items:center}
+.ops button{
+  font-family:inherit;font-size:13px;font-weight:bold;color:var(--choco);
+  border:none;border-radius:999px;padding:8px 14px;cursor:pointer;
+  background:rgba(255,255,255,.85);box-shadow:0 2px 0 rgba(74,44,26,.15);
+}
+.ops button:active{transform:translateY(2px);box-shadow:none}
+.ops button:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.ops .btn-toggle.on{background:var(--mint);color:#fff;box-shadow:0 2px 0 var(--mint-deep)}
+
+/* ---------- 設定パネル ---------- */
+#settings{
+  position:absolute;top:58px;right:14px;z-index:30;
+  background:#fffdf8;border:3px solid var(--choco);border-radius:20px;
+  padding:16px;min-width:272px;box-shadow:0 10px 26px rgba(74,44,26,.28);
+  display:none;
+}
+#settings.open{display:block}
+#settings h2{font-size:14px;margin-bottom:12px;color:#B08968}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.row:last-child{margin-bottom:0}
+.row label{font-size:14px;font-weight:bold}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{
+  font-family:inherit;padding:4px 13px;font-size:18px;font-weight:bold;border:none;
+  border-radius:12px;background:var(--cream);color:var(--choco);cursor:pointer;
+  box-shadow:0 2px 0 rgba(74,44,26,.18);
+}
+.stepper button:active{transform:translateY(2px);box-shadow:none}
+.stepper .val{
+  font-family:ui-monospace,Menlo,monospace;font-size:15px;min-width:64px;text-align:center;
+  background:#fff;border:2px solid #EBD9C4;border-radius:10px;padding:5px 4px;
+}
+
+/* ---------- キャンバス（円形キャンディ） ---------- */
+main{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px 14px}
+#wrap{
+  position:relative;
+  padding:12px;border-radius:50%;
+  background:repeating-conic-gradient(from 0deg,
+    var(--orange) 0deg 18deg, #FFE3CB 18deg 36deg,
+    var(--berry) 36deg 54deg, #FFE3CB 54deg 72deg);
+  box-shadow:0 10px 26px rgba(74,44,26,.22);
+}
+#wrap.wig{animation:wig .5s ease-in-out 2}
+@keyframes wig{0%,100%{transform:rotate(0)}25%{transform:rotate(1.3deg)}75%{transform:rotate(-1.3deg)}}
+canvas{
+  display:block;background:var(--white);border-radius:50%;
+  touch-action:none;cursor:crosshair;
+}
+#hint{
+  position:absolute;inset:12px;display:flex;flex-direction:column;gap:6px;
+  align-items:center;justify-content:center;pointer-events:none;
+  color:rgba(74,44,26,.4);font-weight:bold;font-size:clamp(16px,2.6vw,24px);
+  text-align:center;
+}
+#hint .pen{font-size:clamp(28px,4vw,44px);animation:bob 1.8s ease-in-out infinite}
+#hint.off{display:none}
+
+/* ---------- 下部ドック（こども用ボタン） ---------- */
+#dock{
+  display:flex;align-items:stretch;justify-content:center;gap:10px;flex-wrap:wrap;
+  padding:8px 12px calc(12px + env(safe-area-inset-bottom));
+}
+.tool{
+  font-family:inherit;cursor:pointer;border:none;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  min-width:78px;padding:8px 14px 7px;border-radius:22px;
+  background:var(--white);color:var(--choco);
+  border:3px solid var(--tc,var(--choco));
+  box-shadow:0 4px 0 var(--td,rgba(74,44,26,.25)),0 7px 14px rgba(74,44,26,.12);
+  transition:transform .06s;
+}
+.tool .ico{font-size:26px;line-height:1.15}
+.tool .lbl{font-size:12px;font-weight:900}
+.tool:active{transform:translateY(3px) scale(.97);box-shadow:0 1px 0 var(--td)}
+.tool:focus-visible{outline:3px solid var(--choco);outline-offset:3px}
+.tool-hist{--tc:var(--mint);--td:var(--mint-deep)}
+.tool-clear{--tc:var(--berry);--td:var(--berry-deep)}
+.tool.on{background:var(--tc);color:#fff;transform:scale(1.05)}
+.tool.on .lbl{color:#fff}
+
+.candy-cta{
+  font-family:inherit;cursor:pointer;border:none;
+  display:flex;align-items:center;gap:8px;
+  padding:10px 26px;border-radius:999px;
+  font-size:clamp(16px,2.2vw,20px);font-weight:900;color:#fff;
+  background:linear-gradient(180deg,#FFB13D,var(--orange));
+  box-shadow:0 5px 0 var(--orange-deep),0 9px 18px rgba(255,122,46,.35);
+  animation:pulse 2.2s ease-in-out infinite;
+  transition:transform .06s;
+}
+.candy-cta .ico{font-size:26px}
+.candy-cta:active{transform:translateY(4px) scale(.97);box-shadow:0 1px 0 var(--orange-deep);animation:none}
+.candy-cta:focus-visible{outline:3px solid var(--choco);outline-offset:3px}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+
+/* ---------- トースト ---------- */
+#candyToast{
+  position:fixed;left:50%;top:36%;transform:translate(-50%,-50%) scale(.6) rotate(-3deg);
+  background:#fffdf8;border:4px solid var(--orange);border-radius:28px;
+  padding:20px 30px;font-size:20px;font-weight:900;
+  box-shadow:0 12px 34px rgba(74,44,26,.32);
+  opacity:0;pointer-events:none;z-index:50;
+  transition:opacity .18s,transform .28s cubic-bezier(.34,1.8,.5,1);
+  text-align:center;
+}
+#candyToast.show{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+#blockToast{
+  position:fixed;left:50%;bottom:110px;transform:translateX(-50%);
+  background:rgba(74,44,26,.92);color:#fff;border-radius:999px;
+  padding:10px 20px;font-size:14px;font-weight:bold;opacity:0;pointer-events:none;z-index:50;
+  transition:opacity .25s;white-space:nowrap;
+}
+#blockToast.show{opacity:1}
+
+/* ---------- キャンディ吹雪 ---------- */
+.cfp{
+  position:fixed;left:0;top:0;z-index:80;pointer-events:none;
+  font-size:24px;
+  animation:cf .95s cubic-bezier(.2,.7,.4,1) forwards;
+}
+@keyframes cf{
+  from{transform:translate(var(--x),var(--y)) scale(.5) rotate(0deg);opacity:1}
+  to{transform:translate(var(--tx),var(--ty)) scale(1.2) rotate(var(--r));opacity:0}
+}
+
+/* ---------- G-code モーダル ---------- */
+#gmodal{
+  position:fixed;inset:0;background:rgba(74,44,26,.5);z-index:60;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+#gmodal.open{display:flex}
+#gbox{
+  background:#fffdf8;border-radius:24px;max-width:720px;width:100%;max-height:86dvh;
+  display:flex;flex-direction:column;padding:20px;gap:12px;
+  border:4px solid var(--orange);
+  box-shadow:0 18px 52px rgba(0,0,0,.35);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+#gbox h2{font-size:19px}
+#gstats{font-size:13px;color:#8a6a52;font-family:ui-monospace,Menlo,monospace}
+#gtext{
+  height:160px;resize:none;width:100%;flex:none;
+  font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;
+  border:2px solid #EBD9C4;border-radius:12px;padding:10px;background:#fff;color:#333;
+  -webkit-user-select:text;user-select:text;
+}
+#gbox .actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+#gbox .actions button{
+  font-family:inherit;font-size:15px;font-weight:bold;color:var(--choco);
+  border:none;border-radius:999px;padding:10px 18px;cursor:pointer;
+  background:var(--white);box-shadow:0 3px 0 rgba(74,44,26,.2);
+}
+#gbox .actions .btn-primary{background:var(--orange);color:#fff;box-shadow:0 3px 0 var(--orange-deep)}
+#gbox .actions button:active{transform:translateY(2px);box-shadow:none}
+
+/* ---------- 記念画像 ---------- */
+#shotWrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+#shotImg{
+  max-width:100%;max-height:44dvh;border-radius:16px;
+  box-shadow:0 6px 18px rgba(74,44,26,.22);
+  -webkit-touch-callout:default;   /* 長押し保存を許可 */
+  user-select:auto;-webkit-user-select:auto;
+}
+#gdetails[open] ~ * #shotImg,
+#gbox:has(#gdetails[open]) #shotImg{max-height:26dvh}
+.shot-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.shot-actions button{
+  font-family:inherit;font-size:15px;font-weight:bold;color:var(--choco);
+  border:none;border-radius:999px;padding:10px 20px;cursor:pointer;
+  background:var(--white);box-shadow:0 3px 0 rgba(74,44,26,.2);
+}
+.shot-actions .btn-primary{background:var(--orange);color:#fff;box-shadow:0 3px 0 var(--orange-deep)}
+.shot-actions button:active{transform:translateY(2px);box-shadow:none}
+.shot-hint{font-size:12px;color:#A98A6E}
+#gdetails{border-top:2px dashed #EBD9C4;padding-top:10px}
+#gdetails summary{font-size:13px;color:#8a6a52;cursor:pointer;padding:4px 0}
+#gdetails > div,#gdetails > textarea{margin-top:8px}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<div id="bg" aria-hidden="true">
+  <span style="left:6%;top:12%;--d:24s">🍬</span>
+  <span style="left:88%;top:18%;--d:19s">🍭</span>
+  <span style="left:14%;top:72%;--d:27s">🍫</span>
+  <span style="left:80%;top:70%;--d:21s">🧁</span>
+  <span style="left:46%;top:8%;--d:26s">⭐</span>
+  <span style="left:60%;top:82%;--d:23s">🍩</span>
+</div>
+
+<header>
+  <h1 id="logo" aria-label="おえかきキャンディラボ">
+    <span class="emo" style="--i:0">🍬</span><span style="--i:1">お</span><span style="--i:2">え</span><span style="--i:3">か</span><span style="--i:4">き</span><span style="--i:5">キ</span><span style="--i:6">ャ</span><span style="--i:7">ン</span><span style="--i:8">デ</span><span style="--i:9">ィ</span><span style="--i:10">ラ</span><span style="--i:11">ボ</span><small>Byte Bites Inc.</small>
+  </h1>
+  <div class="ops">
+    <button id="btnPencil" class="btn-toggle on" aria-pressed="true">✏️ Pencilのみ ON</button>
+    <button id="btnGear" aria-label="設定">⚙️</button>
+  </div>
+</header>
+
+<div id="settings" role="dialog" aria-label="設定">
+  <h2>せってい</h2>
+  <div class="row">
+    <label>線の太さ (px)</label>
+    <div class="stepper">
+      <button data-step="w-">−</button>
+      <span class="val" id="valWidth">15</span>
+      <button data-step="w+">＋</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>レイヤーピッチ (mm)</label>
+    <div class="stepper">
+      <button data-step="p-">−</button>
+      <span class="val" id="valPitch">1.5</span>
+      <button data-step="p+">＋</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>造形層数</label>
+    <div class="stepper">
+      <button data-step="l-">−</button>
+      <span class="val" id="valLayers">2</span>
+      <button data-step="l+">＋</button>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div id="wrap">
+    <canvas id="cv"></canvas>
+    <div id="hint"><span class="pen">✏️</span>ここに おえかきしてね！</div>
+  </div>
+</main>
+
+<nav id="dock" aria-label="ツール">
+  <button id="btnUndo" class="tool tool-hist"><span class="ico">↩️</span><span class="lbl">もどす</span></button>
+  <button id="btnRedo" class="tool tool-hist"><span class="ico">↪️</span><span class="lbl">やりなおす</span></button>
+  <button id="btnClear" class="tool tool-clear"><span class="ico">🗑</span><span class="lbl">ぜんぶけす</span></button>
+  <button id="btnGcode" class="candy-cta"><span class="ico">🍭</span>キャンディにする！</button>
+</nav>
+
+<div id="candyToast"></div>
+<div id="blockToast">🖐 指タッチはブロック中（Pencilのみモード）</div>
+
+<div id="gmodal">
+  <div id="gbox">
+    <h2>🍭 キャンディのレシピが できたよ！</h2>
+    <div id="shotWrap">
+      <img id="shotImg" alt="できあがった作品">
+      <div class="shot-actions">
+        <button id="btnSaveImg" class="btn-primary">💾 がぞうを ほぞん</button>
+        <button id="btnShareImg">📤 おくる</button>
+      </div>
+      <p class="shot-hint">画像を長押しでも保存できます</p>
+    </div>
+    <details id="gdetails">
+      <summary>プリンター用データ（G-code）</summary>
+      <div id="gstats"></div>
+      <textarea id="gtext" readonly></textarea>
+      <div class="actions">
+        <button id="btnCopy">📋 コピー</button>
+        <button id="btnShareG">📤 おくる</button>
+        <button id="btnDl" class="btn-primary">⬇️ ダウンロード</button>
+      </div>
+    </details>
+    <div class="actions">
+      <button id="btnCloseG">とじる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= 定数 ================= */
+const BED = 100;              // ベッドサイズ mm（固定・UI非表示）
+const DRAW_R = BED / 2;       // 円形描画領域の半径 mm（ベッドに内接）
+const EDGE_MARGIN = 0.4;      // 円周ぎわの線が欠けないための内側マージン mm
+const NOZZLE = 0.4;           // ノズル径 mm（固定）
+const FILAMENT = 1.75;        // フィラメント径 mm（固定）
+const PX_PER_MM = 4;          // 線幅px→mm換算の基準（480px基準キャンバス相当）
+const DOT_MAX_LEN = 5;        // 点判定：総延長5mm以内
+const DOT_DIAMETER = 5;       // 点→円変換の直径
+const DOT_VERTS = 24;         // 円の頂点数
+const MERGE_TH = 2;           // 近接結合しきい値 mm
+const CLUSTER_R = 10;         // 交差点密集判定半径 mm
+const CLUSTER_N = 5;          // 密集判定個数
+const PEN_COLOR = '#ff7a2e';
+const F_PRINT = 1200;         // 通常プリント速度 mm/min
+const F_TRAVEL = 3000;        // 空中移動速度
+const F_Z = 600;              // Z移動速度
+const F_DOT = Math.round(F_PRINT / 1.5);  // 点描画は1/1.5倍速
+const Z_LIFT = 1;             // パス間リフト量 mm
+const MIN_SEG = 0.25;         // 取得時の最小点間隔 mm
+const RDP_EPS = 0.12;         // 簡略化許容誤差 mm
+
+/* ================= 状態 ================= */
+let strokes = [];             // {pts:[{x,y}(mm, canvas座標系 Y下向き)], width(px), isDot}
+let undoStack = [];           // {type:'add'} | {type:'clear', strokes:[...]}
+let redoStack = [];           // Undoで取り消した操作（新規操作で破棄）
+let cur = null;               // 描画中ストローク
+let pencilOnly = true;
+let lineWidth = 15;
+let layerPitch = 1.5;
+let layers = 2;
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let viewPx = 480;             // 表示サイズ(CSS px)
+
+/* ================= キャンバスサイズ ================= */
+function fitCanvas(){
+  const main = document.querySelector('main');
+  const pad = 84; // 包み紙フレーム+ねじり+余白
+  const size = Math.max(200, Math.min(main.clientWidth, main.clientHeight) - pad);
+  viewPx = size;
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = cv.style.height = size + 'px';
+  cv.width = cv.height = Math.round(size * dpr);
+  redraw();
+}
+window.addEventListener('resize', fitCanvas);
+
+/* ================= 描画 ================= */
+function redraw(){
+  const dpr = window.devicePixelRatio || 1;
+  const s = (viewPx * dpr) / BED;          // mm→デバイスpx
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  ctx.clearRect(0, 0, BED, BED);
+  ctx.save();
+  ctx.beginPath();                          // 円形の描画領域でクリップ
+  ctx.arc(BED / 2, BED / 2, DRAW_R, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = PEN_COLOR;
+  for(const st of strokes) drawStroke(st);
+  if(cur) drawStroke(cur);
+  ctx.restore();
+  const hint = document.getElementById('hint');
+  if(hint) hint.classList.toggle('off', strokes.length > 0 || !!cur);
+}
+function drawStroke(st){
+  const p = st.pts;
+  if(!p.length) return;
+  ctx.lineWidth = st.width / PX_PER_MM;    // px→mm
+  ctx.beginPath();
+  ctx.moveTo(p[0].x, p[0].y);
+  if(p.length === 1) ctx.lineTo(p[0].x + 0.01, p[0].y);
+  for(let i = 1; i < p.length; i++) ctx.lineTo(p[i].x, p[i].y);
+  ctx.stroke();
+}
+
+/* ================= 幾何ユーティリティ ================= */
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const last = arr => arr[arr.length - 1];
+function pathLen(pts){
+  let L = 0;
+  for(let i = 1; i < pts.length; i++) L += dist(pts[i-1], pts[i]);
+  return L;
+}
+/* Ramer–Douglas–Peucker 簡略化 */
+function rdp(pts, eps){
+  if(pts.length < 3) return pts;
+  const first = pts[0], end = last(pts);
+  let maxD = 0, idx = 0;
+  const dx = end.x - first.x, dy = end.y - first.y;
+  const len = Math.hypot(dx, dy) || 1e-9;
+  for(let i = 1; i < pts.length - 1; i++){
+    const d = Math.abs(dy * pts[i].x - dx * pts[i].y + end.x * first.y - end.y * first.x) / len;
+    if(d > maxD){ maxD = d; idx = i; }
+  }
+  if(maxD > eps){
+    const a = rdp(pts.slice(0, idx + 1), eps);
+    const b = rdp(pts.slice(idx), eps);
+    return a.slice(0, -1).concat(b);
+  }
+  return [first, end];
+}
+/* 線分交差判定（交点を返す / なければnull） */
+function segIntersect(p1, p2, p3, p4){
+  const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+  const den = d1x * d2y - d1y * d2x;
+  if(Math.abs(den) < 1e-12) return null;
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / den;
+  const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / den;
+  if(t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: p1.x + t * d1x, y: p1.y + t * d1y };
+}
+function bbox(pts){
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for(const p of pts){
+    if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
+    if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/* ================= 入力（Pointer Events） ================= */
+let blockToastTimer = null;
+function showBlockToast(){
+  const el = document.getElementById('blockToast');
+  el.classList.add('show');
+  clearTimeout(blockToastTimer);
+  blockToastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+function allowedInput(e){
+  if(!pencilOnly) return true;
+  return e.pointerType === 'pen';
+}
+function toMM(e){
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * BED;
+  const y = (e.clientY - r.top) / r.height * BED;
+  // 円形の描画領域からはみ出した座標は、中心から見て円周上に丸める
+  const c = BED / 2;
+  const dx = x - c, dy = y - c;
+  const d = Math.hypot(dx, dy);
+  const maxR = DRAW_R - lineWidth / PX_PER_MM / 2 - EDGE_MARGIN;
+  if(d > maxR && d > 0){
+    const k = maxR / d;
+    return { x: c + dx * k, y: c + dy * k };
+  }
+  return { x, y };
+}
+cv.addEventListener('pointerdown', e => {
+  if(!allowedInput(e)){ showBlockToast(); return; }
+  e.preventDefault();
+  try{ cv.setPointerCapture(e.pointerId); }catch(_){}
+  cur = { pts: [toMM(e)], width: lineWidth, isDot: false, pid: e.pointerId };
+  redraw();
+});
+cv.addEventListener('pointermove', e => {
+  if(!cur || e.pointerId !== cur.pid) return;
+  e.preventDefault();
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for(const ev of evs){
+    const p = toMM(ev);
+    if(dist(last(cur.pts), p) >= MIN_SEG) cur.pts.push(p);
+  }
+  redraw();
+});
+function endStroke(e){
+  if(!cur || (e && e.pointerId !== cur.pid)) return;
+  finalizeStroke(cur);
+  cur = null;
+  redraw();
+}
+cv.addEventListener('pointerup', endStroke);
+cv.addEventListener('pointercancel', endStroke);
+cv.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+
+/* ================= ストローク確定 ================= */
+function finalizeStroke(st){
+  let pts = st.pts;
+  // ペンを置いて動かさなかった（1点のみ・移動なし）→ 無反応
+  if(pts.length < 2 || pathLen(pts) === 0) return;
+
+  // 点判定：総延長がベッド座標換算で5mm以内 → 直径5mm・24頂点の円に変換
+  if(pathLen(pts) <= DOT_MAX_LEN){
+    let cx = 0, cy = 0;
+    for(const p of pts){ cx += p.x; cy += p.y; }
+    cx /= pts.length; cy /= pts.length;
+    const r = DOT_DIAMETER / 2;
+    // 変換後の円が描画領域からはみ出す場合は、中心を内側へ寄せる
+    const c = BED / 2;
+    const dx0 = cx - c, dy0 = cy - c;
+    const d0 = Math.hypot(dx0, dy0);
+    const maxC = DRAW_R - r - st.width / PX_PER_MM / 2 - EDGE_MARGIN;
+    if(d0 > maxC && d0 > 0){
+      const k = maxC / d0;
+      cx = c + dx0 * k; cy = c + dy0 * k;
+    }
+    const circle = [];
+    for(let i = 0; i <= DOT_VERTS; i++){        // 始点=終点で閉じる
+      const a = (i % DOT_VERTS) / DOT_VERTS * Math.PI * 2;
+      circle.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+    strokes.push({ pts: circle, width: st.width, isDot: true });
+    undoStack.push({ type: 'add' });
+    redoStack.length = 0;
+    candyToast('🍬 ちいさい点は まるに へんかんしたよ ⭕');
+    candyBurst(window.innerWidth / 2, window.innerHeight * 0.36, 8);
+    return;
+  }
+
+  // 通常ストローク：自動簡略化（頂点数削減）
+  strokes.push({ pts: rdp(pts, RDP_EPS), width: st.width, isDot: false });
+  undoStack.push({ type: 'add' });
+  redoStack.length = 0;
+}
+
+/* ================= トースト ================= */
+let candyTimer = null;
+function candyToast(msg){
+  const el = document.getElementById('candyToast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(candyTimer);
+  candyTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+/* ================= Undo / Redo / Clear ================= */
+document.getElementById('btnUndo').addEventListener('click', () => {
+  const a = undoStack.pop();
+  if(!a) return;
+  if(a.type === 'add'){
+    const stroke = strokes.pop();
+    redoStack.push({ type: 'add', stroke });
+  }else if(a.type === 'clear'){
+    strokes = a.strokes;
+    redoStack.push({ type: 'clear' });
+  }
+  redraw();
+});
+document.getElementById('btnRedo').addEventListener('click', () => {
+  const a = redoStack.pop();
+  if(!a) return;
+  if(a.type === 'add'){
+    strokes.push(a.stroke);
+    undoStack.push({ type: 'add' });
+  }else if(a.type === 'clear'){
+    undoStack.push({ type: 'clear', strokes });
+    strokes = [];
+  }
+  redraw();
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  if(!strokes.length) return;
+  undoStack.push({ type: 'clear', strokes });
+  strokes = [];
+  redoStack.length = 0;   // 新規操作でRedo履歴は破棄
+  redraw();
+});
+
+/* ================= Pencilのみトグル ================= */
+const btnPencil = document.getElementById('btnPencil');
+btnPencil.addEventListener('click', () => {
+  pencilOnly = !pencilOnly;
+  btnPencil.classList.toggle('on', pencilOnly);
+  btnPencil.setAttribute('aria-pressed', String(pencilOnly));
+  btnPencil.textContent = pencilOnly ? '✏️ Pencilのみ ON' : '✏️ Pencilのみ OFF';
+});
+
+/* ================= 設定パネル ================= */
+const settings = document.getElementById('settings');
+document.getElementById('btnGear').addEventListener('click', e => {
+  e.stopPropagation();
+  settings.classList.toggle('open');
+});
+document.addEventListener('pointerdown', e => {
+  if(settings.classList.contains('open') &&
+     !settings.contains(e.target) &&
+     e.target.id !== 'btnGear') settings.classList.remove('open');
+});
+function refreshSettings(){
+  document.getElementById('valWidth').textContent = lineWidth;
+  document.getElementById('valPitch').textContent = layerPitch.toFixed(1);
+  document.getElementById('valLayers').textContent = layers;
+}
+settings.addEventListener('click', e => {
+  const s = e.target.dataset && e.target.dataset.step;
+  if(!s) return;
+  if(s === 'w+') lineWidth = Math.min(40, Math.round((lineWidth + 0.5) * 2) / 2);
+  if(s === 'w-') lineWidth = Math.max(0.5, Math.round((lineWidth - 0.5) * 2) / 2);
+  if(s === 'p+') layerPitch = Math.min(5, Math.round((layerPitch + 0.1) * 10) / 10);
+  if(s === 'p-') layerPitch = Math.max(0.1, Math.round((layerPitch - 0.1) * 10) / 10);
+  if(s === 'l+') layers = Math.min(20, layers + 1);
+  if(s === 'l-') layers = Math.max(1, layers - 1);
+  refreshSettings();
+});
+
+/* ============================================================
+   G-code 生成パイプライン
+   ベッド座標系：Y上向き（canvas座標のYを反転）
+============================================================ */
+function toBedCoords(strokeList){
+  return strokeList.map(s => ({
+    isDot: s.isDot,
+    pts: s.pts.map(p => ({ x: p.x, y: BED - p.y }))
+  }));
+}
+
+/* --- C. 重複線（ぐるぐる描き）の自動間引き（サイレント） --- */
+function cullOverlaps(list){
+  const inters = []; // {x, y, a, b}  a,b: ストロークindex
+  const boxes = list.map(s => bbox(s.pts));
+  for(let a = 0; a < list.length; a++){
+    for(let b = a + 1; b < list.length; b++){
+      const A = boxes[a], B = boxes[b];
+      if(A.maxX < B.minX || B.maxX < A.minX || A.maxY < B.minY || B.maxY < A.minY) continue;
+      const pa = list[a].pts, pb = list[b].pts;
+      for(let i = 1; i < pa.length; i++){
+        for(let j = 1; j < pb.length; j++){
+          const hit = segIntersect(pa[i-1], pa[i], pb[j-1], pb[j]);
+          if(hit) inters.push({ x: hit.x, y: hit.y, a, b });
+        }
+      }
+    }
+  }
+  const removed = new Set();
+  for(let k = 0; k < inters.length; k++){
+    let cluster = [];
+    for(let m = 0; m < inters.length; m++){
+      if(dist(inters[k], inters[m]) <= CLUSTER_R) cluster.push(m);
+    }
+    if(cluster.length >= CLUSTER_N){
+      const set = new Set();
+      for(const m of cluster){ set.add(inters[m].a); set.add(inters[m].b); }
+      const keep = Math.min(...set);           // 最初に描かれた1本を残す
+      for(const s of set) if(s !== keep) removed.add(s);
+    }
+  }
+  return list.filter((_, i) => !removed.has(i));
+}
+
+/* --- A. 近接セグメントの自動結合（2mm以内） --- */
+function mergeNear(list){
+  const out = list.map(s => ({ isDot: s.isDot, pts: s.pts.slice() }));
+  let merged = true;
+  while(merged){
+    merged = false;
+    outer:
+    for(let i = 0; i < out.length; i++){
+      if(out[i].isDot) continue;
+      const end = last(out[i].pts);
+      for(let j = 0; j < out.length; j++){
+        if(i === j || out[j].isDot) continue;
+        if(dist(end, out[j].pts[0]) <= MERGE_TH){
+          out[i].pts = out[i].pts.concat(out[j].pts);
+          out.splice(j, 1);
+          merged = true;
+          break outer;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/* --- B. 最短経路への並び替え＋反転（Nearest Neighbor with Flip） --- */
+function orderNearest(list){
+  if(list.length <= 1) return list;
+  const rem = list.slice(1);
+  const out = [list[0]];                       // 最初のストロークは固定
+  let curEnd = last(out[0].pts);
+  while(rem.length){
+    let best = 0, bestD = Infinity, flip = false;
+    for(let i = 0; i < rem.length; i++){
+      const dS = dist(curEnd, rem[i].pts[0]);
+      const dE = dist(curEnd, last(rem[i].pts));
+      if(dS < bestD){ bestD = dS; best = i; flip = false; }
+      if(dE < bestD){ bestD = dE; best = i; flip = true; }
+    }
+    const s = rem.splice(best, 1)[0];
+    if(flip) s.pts = s.pts.slice().reverse();  // 終点が近い→点順を反転
+    out.push(s);
+    curEnd = last(s.pts);
+  }
+  return out;
+}
+
+/* --- G-code 出力 --- */
+function generateGcode(){
+  const originalCount = strokes.length;
+  let list = toBedCoords(strokes);
+  list = cullOverlaps(list);                   // C（サイレント間引き）
+  const afterCulling = list.length;
+  list = mergeNear(list);                      // A
+  list = orderNearest(list);                   // B
+
+  const extArea = NOZZLE * layerPitch;
+  const filArea = Math.PI * Math.pow(FILAMENT / 2, 2);
+  const extMult = extArea / filArea;           // 押し出し倍率
+
+  const fx = n => n.toFixed(2);
+  const fe = n => n.toFixed(5);
+  let E = 0;
+  let printLen = 0, travelLen = 0;
+  let cx = 0, cy = 0;
+  const g = [];
+
+  g.push('; ===================================');
+  g.push('; Oekaki Candy Lab - Byte Bites Inc.');
+  g.push(`; Generated: ${new Date().toISOString()}`);
+  g.push(`; Bed: ${BED}x${BED}mm  Draw area: circle d${BED}mm  Nozzle: ${NOZZLE}mm  Filament: ${FILAMENT}mm`);
+  g.push(`; Layer pitch: ${layerPitch}mm  Layers: ${layers}`);
+  g.push(`; Extrusion multiplier: ${extMult.toFixed(5)}`);
+  g.push(`; Original paths: ${originalCount}, After culling: ${afterCulling}`);
+  g.push('; ===================================');
+  g.push('G21 ; mm');
+  g.push('G90 ; absolute positioning');
+  g.push('M82 ; absolute extrusion');
+  g.push('G92 E0');
+  g.push('G28 ; home');
+  g.push('');
+
+  cx = 0; cy = 0;   // G28後のホーム位置
+
+  for(let L = 0; L < layers; L++){
+    const z = layerPitch * (L + 1);
+    g.push(`; --- Layer ${L + 1}/${layers}  Z=${fx(z)} ---`);
+    for(const s of list){
+      const p0 = s.pts[0];
+      /* E. パス間移動：Z+1mmリフト → XY移動(G0) → 元の高さへ */
+      g.push(`G0 Z${fx(z + Z_LIFT)} F${F_Z}`);
+      travelLen += dist({ x: cx, y: cy }, p0);
+      g.push(`G0 X${fx(p0.x)} Y${fx(p0.y)} F${F_TRAVEL}`);
+      g.push(`G0 Z${fx(z)} F${F_Z}`);
+      /* D. 点（円変換済み）: 到着直後に0.5秒停止＋速度1/1.5 */
+      if(s.isDot) g.push('G4 P500 ; dwell for dot');
+      const feed = s.isDot ? F_DOT : F_PRINT;
+      let prev = p0;
+      for(let i = 1; i < s.pts.length; i++){
+        const p = s.pts[i];
+        const d = dist(prev, p);
+        E += d * extMult;
+        printLen += d;
+        g.push(`G1 X${fx(p.x)} Y${fx(p.y)} E${fe(E)}${i === 1 ? ' F' + feed : ''}`);
+        prev = p;
+      }
+      cx = prev.x; cy = prev.y;
+    }
+    g.push('');
+  }
+
+  const zEnd = layerPitch * layers + 10;
+  g.push('; --- End ---');
+  g.push(`G0 Z${fx(zEnd)} F${F_Z}`);
+  g.push('M84 ; motors off');
+
+  return {
+    text: g.join('\n'),
+    stats: { originalCount, afterCulling, pathCount: list.length, printLen, travelLen, E }
+  };
+}
+
+/* ================= 記念画像の生成 =================
+   画面のスクリーンショットではなく、作品だけを高解像度で描き直す。
+   これによりボタン等のUIは一切写り込まない。 */
+function buildSouvenir(){
+  const S = 1200;                       // 出力サイズ px（正方形）
+  const PAD = 96;                       // 外周の余白
+  const cvs = document.createElement('canvas');
+  cvs.width = cvs.height = S;
+  const g = cvs.getContext('2d');
+
+  // 背景（クリーム）
+  g.fillStyle = '#FFF7E8';
+  g.fillRect(0, 0, S, S);
+
+  const cxp = S / 2, cyp = S / 2 - 24;  // 円の中心（下にタイトル帯を置くため少し上げる）
+  const outerR = (S - PAD * 2) / 2;
+  const frameW = 46;                    // 縞フレームの太さ
+  const innerR = outerR - frameW;
+
+  // 縞のフレーム（放射状）
+  const seg = 20;
+  for(let i = 0; i < seg; i++){
+    g.beginPath();
+    g.moveTo(cxp, cyp);
+    g.arc(cxp, cyp, outerR, i / seg * Math.PI * 2, (i + 1) / seg * Math.PI * 2);
+    g.closePath();
+    g.fillStyle = (i % 4 === 0) ? '#FF7A2E' : (i % 4 === 2) ? '#F45D8C' : '#FFE3CB';
+    g.fill();
+  }
+  // 内側の白い円
+  g.beginPath();
+  g.arc(cxp, cyp, innerR, 0, Math.PI * 2);
+  g.fillStyle = '#FFFFFF';
+  g.fill();
+
+  // 作品を描画（mm → px）
+  const k = (innerR * 2) / BED;
+  g.save();
+  g.beginPath();
+  g.arc(cxp, cyp, innerR, 0, Math.PI * 2);
+  g.clip();
+  g.translate(cxp - innerR, cyp - innerR);
+  g.scale(k, k);
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.strokeStyle = PEN_COLOR;
+  for(const st of strokes){
+    const p = st.pts;
+    if(!p.length) continue;
+    g.lineWidth = st.width / PX_PER_MM;
+    g.beginPath();
+    g.moveTo(p[0].x, p[0].y);
+    if(p.length === 1) g.lineTo(p[0].x + 0.01, p[0].y);
+    for(let i = 1; i < p.length; i++) g.lineTo(p[i].x, p[i].y);
+    g.stroke();
+  }
+  g.restore();
+
+  // タイトルと日付
+  const FF = '"Hiragino Maru Gothic ProN","BIZ UDPGothic",sans-serif';
+  g.textAlign = 'center';
+  g.fillStyle = '#4A2C1A';
+  g.font = 'bold 40px ' + FF;
+  g.fillText('🍬 おえかきキャンディラボ', cxp, PAD - 34);
+  const d = new Date();
+  const ds = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  g.fillStyle = '#B08968';
+  g.font = '26px ' + FF;
+  g.fillText(ds + '　Byte Bites Inc.', cxp, S - 34);
+
+  return cvs;
+}
+
+let souvenirBlob = null;
+function renderSouvenir(){
+  const cvs = buildSouvenir();
+  const img = document.getElementById('shotImg');
+  img.src = cvs.toDataURL('image/png');
+  cvs.toBlob(b => { souvenirBlob = b; }, 'image/png');
+}
+function souvenirName(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `candy_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.png`;
+}
+document.getElementById('btnSaveImg').addEventListener('click', () => {
+  const img = document.getElementById('shotImg');
+  if(!img.src) return;
+  const a = document.createElement('a');
+  a.href = img.src;
+  a.download = souvenirName();
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 500);
+  candyToast('💾 ほぞんしたよ！');
+});
+document.getElementById('btnShareImg').addEventListener('click', async () => {
+  if(!souvenirBlob){ candyToast('もうすこし まってね'); return; }
+  const file = new File([souvenirBlob], souvenirName(), { type: 'image/png' });
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{ await navigator.share({ files: [file], title: 'おえかきキャンディ' }); }
+    catch(_){ /* ユーザーがキャンセルした場合は何もしない */ }
+  }else{
+    candyToast('📤 この端末では つかえないよ');
+  }
+});
+
+
+/* ================= キャンディ吹雪 ================= */
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const CANDY_EMO = ['🍬','🍭','⭐','🍫','🧁','✨'];
+function candyBurst(x, y, n = 22){
+  if(REDUCED) return;
+  for(let i = 0; i < n; i++){
+    const s = document.createElement('span');
+    s.className = 'cfp';
+    s.textContent = CANDY_EMO[(Math.random() * CANDY_EMO.length) | 0];
+    const ang = Math.random() * Math.PI * 2;
+    const d = 90 + Math.random() * 190;
+    s.style.setProperty('--x', x + 'px');
+    s.style.setProperty('--y', y + 'px');
+    s.style.setProperty('--tx', (x + Math.cos(ang) * d) + 'px');
+    s.style.setProperty('--ty', (y + Math.sin(ang) * d - 70) + 'px');
+    s.style.setProperty('--r', ((Math.random() * 2 - 1) * 340) + 'deg');
+    s.addEventListener('animationend', () => s.remove());
+    document.body.appendChild(s);
+  }
+}
+
+/* ================= G-code モーダル ================= */
+const gmodal = document.getElementById('gmodal');
+document.getElementById('btnGcode').addEventListener('click', e => {
+  if(!strokes.length){ candyToast('✏️ まだ えが ないよ！'); return; }
+  const r = generateGcode();
+  document.getElementById('gtext').value = r.text;
+  const s = r.stats;
+  document.getElementById('gstats').textContent =
+    `パス: ${s.pathCount}本（描画${s.originalCount}本） / 造形距離: ${s.printLen.toFixed(0)}mm / 空中移動: ${s.travelLen.toFixed(0)}mm / 総E: ${s.E.toFixed(2)}`;
+  renderSouvenir();                       // 記念画像を作る（UIは写り込まない）
+  // お祝い演出 → 少し待ってからレシピを表示
+  const rect = e.currentTarget.getBoundingClientRect();
+  candyBurst(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  const wrap = document.getElementById('wrap');
+  wrap.classList.add('wig');
+  setTimeout(() => wrap.classList.remove('wig'), 1100);
+  setTimeout(() => gmodal.classList.add('open'), REDUCED ? 0 : 650);
+});
+document.getElementById('btnCloseG').addEventListener('click', () => gmodal.classList.remove('open'));
+gmodal.addEventListener('pointerdown', e => { if(e.target === gmodal) gmodal.classList.remove('open'); });
+
+document.getElementById('btnCopy').addEventListener('click', async () => {
+  const t = document.getElementById('gtext');
+  try{
+    await navigator.clipboard.writeText(t.value);
+    candyToast('📋 コピーしたよ！');
+  }catch(_){
+    t.focus(); t.select();
+    document.execCommand('copy');
+    candyToast('📋 コピーしたよ！');
+  }
+});
+function gcodeName(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `candy_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.gcode`;
+}
+document.getElementById('btnDl').addEventListener('click', () => {
+  const text = document.getElementById('gtext').value;
+  if(!text){ candyToast('データが まだ ないよ'); return; }
+  const name = gcodeName();
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  candyToast('⬇️ ' + name);
+});
+document.getElementById('btnShareG').addEventListener('click', async () => {
+  const text = document.getElementById('gtext').value;
+  if(!text){ candyToast('データが まだ ないよ'); return; }
+  const file = new File([text], gcodeName(), { type: 'text/plain' });
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{ await navigator.share({ files: [file], title: 'G-code' }); }
+    catch(_){ /* キャンセル時は何もしない */ }
+  }else{
+    candyToast('この端末では つかえないよ');
+  }
+});
+
+/* ================= 初期化 ================= */
+refreshSettings();
+fitCanvas();
+</script>
+</body>
+</html>
