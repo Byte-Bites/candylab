@@ -104,7 +104,48 @@ header{
 }
 
 /* ---------- キャンバス（円形キャンディ） ---------- */
-main{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px 14px}
+main{
+  flex:1;display:flex;align-items:center;gap:18px;
+  min-height:0;padding:8px 18px;
+}
+#stage{
+  flex:1;min-width:0;height:100%;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* ---------- おえかきのコツ（左） ---------- */
+#tips{
+  flex:0 0 auto;width:clamp(200px,24vw,300px);
+  display:flex;flex-direction:column;gap:12px;
+  max-height:100%;overflow-y:auto;
+}
+#tips h2{
+  font-size:16px;font-weight:900;color:var(--choco);
+  display:flex;align-items:center;gap:6px;
+}
+#tips h2::before{content:"🤝"}
+.tip{
+  display:flex;gap:10px;align-items:flex-start;
+  background:rgba(255,255,255,.9);border-radius:18px;
+  padding:12px 14px;border:3px solid var(--mint);
+  box-shadow:0 3px 0 var(--mint-deep);
+}
+.tip:nth-child(3){border-color:var(--soda);box-shadow:0 3px 0 var(--soda-deep)}
+.tip-ico{font-size:28px;line-height:1.1;flex:0 0 auto}
+.tip-title{font-size:14px;font-weight:900;margin-bottom:4px}
+.tip-text{font-size:12.5px;line-height:1.55;color:#6B4A33}
+.tip-em{
+  display:inline-block;margin-top:5px;
+  font-style:normal;font-weight:900;font-size:14px;color:#fff;
+  background:var(--orange);border-radius:999px;padding:3px 12px;
+  box-shadow:0 2px 0 var(--orange-deep);
+}
+.tips-foot{
+  font-size:13px;font-weight:bold;color:var(--choco);text-align:center;
+  background:rgba(255,255,255,.8);border-radius:14px;padding:8px 10px;
+  border:2px dashed var(--berry);
+}
+
 #wrap{
   position:relative;
   padding:12px;border-radius:50%;
@@ -249,6 +290,23 @@ canvas{
 #gdetails summary{font-size:13px;color:#8a6a52;cursor:pointer;padding:4px 0}
 #gdetails > div,#gdetails > textarea{margin-top:8px}
 
+/* ---------- 画面が狭い/縦向きのとき ---------- */
+@media (max-width:820px), (orientation:portrait){
+  main{flex-direction:column;gap:10px;padding:6px 12px}
+  #tips{
+    width:100%;flex-direction:row;flex-wrap:wrap;
+    align-items:stretch;justify-content:center;gap:8px;
+  }
+  #tips h2{display:none}
+  .tips-foot{flex:1 1 100%;font-size:12px;padding:6px 10px;order:3}
+  .tip{flex:1 1 240px;padding:8px 10px;border-width:2px}
+  .tip-ico{font-size:22px}
+  .tip-title{font-size:13px}
+  .tip-text{font-size:11.5px;line-height:1.45}
+  .tip-em{font-size:12.5px;padding:2px 10px;margin-top:4px}
+  #stage{flex:1;width:100%}
+}
+
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }
@@ -304,9 +362,29 @@ canvas{
 </div>
 
 <main>
-  <div id="wrap">
-    <canvas id="cv"></canvas>
-    <div id="hint"><span class="pen">✏️</span>ここに おえかきしてね！</div>
+  <aside id="tips">
+    <h2>おえかきの やくそく</h2>
+    <div class="tip">
+      <div class="tip-ico">✏️</div>
+      <div class="tip-body">
+        <p class="tip-title">ぬりつぶしは ちょっと にがて</p>
+        <p class="tip-text">おさとうが あふれちゃうんだ。<br><em class="tip-em">せんで かいてね！</em></p>
+      </div>
+    </div>
+    <div class="tip">
+      <div class="tip-ico">⭕</div>
+      <div class="tip-body">
+        <p class="tip-title">ちいさい てんは まるに へんしん</p>
+        <p class="tip-text">ちいさすぎると かすれちゃうから、<br>まんまるに かえておくね！</p>
+      </div>
+    </div>
+    <p class="tips-foot">かきおわったら スタッフに おしえてね</p>
+  </aside>
+  <div id="stage">
+    <div id="wrap">
+      <canvas id="cv"></canvas>
+      <div id="hint"><span class="pen">✏️</span>ここに おえかきしてね！</div>
+    </div>
   </div>
 </main>
 
@@ -388,9 +466,9 @@ let viewPx = 480;             // 表示サイズ(CSS px)
 
 /* ================= キャンバスサイズ ================= */
 function fitCanvas(){
-  const main = document.querySelector('main');
-  const pad = 84; // 包み紙フレーム+ねじり+余白
-  const size = Math.max(200, Math.min(main.clientWidth, main.clientHeight) - pad);
+  const stage = document.getElementById('stage');
+  const pad = 40; // 円形フレームの太さ+余白
+  const size = Math.max(200, Math.min(stage.clientWidth, stage.clientHeight) - pad);
   viewPx = size;
   const dpr = window.devicePixelRatio || 1;
   cv.style.width = cv.style.height = size + 'px';
@@ -398,6 +476,7 @@ function fitCanvas(){
   redraw();
 }
 window.addEventListener('resize', fitCanvas);
+window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 250));
 
 /* ================= 描画 ================= */
 function redraw(){
