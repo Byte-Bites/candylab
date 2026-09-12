@@ -297,7 +297,7 @@ canvas{
     <label>造形層数</label>
     <div class="stepper">
       <button data-step="l-">−</button>
-      <span class="val" id="valLayers">2</span>
+      <span class="val" id="valLayers">1</span>
       <button data-step="l+">＋</button>
     </div>
   </div>
@@ -336,7 +336,6 @@ canvas{
       <div id="gstats"></div>
       <textarea id="gtext" readonly></textarea>
       <div class="actions">
-        <button id="btnCopy">📋 コピー</button>
         <button id="btnShareG">📤 おくる</button>
         <button id="btnDl" class="btn-primary">⬇️ ダウンロード</button>
       </div>
@@ -358,7 +357,7 @@ const FILAMENT = 1.75;        // フィラメント径 mm（固定）
 const PX_PER_MM = 4;          // 線幅px→mm換算の基準（480px基準キャンバス相当）
 const DOT_MAX_LEN = 5;        // 点判定：総延長5mm以内
 const DOT_DIAMETER = 5;       // 点→円変換の直径
-const DOT_VERTS = 24;         // 円の頂点数
+const DOT_VERTS = 16;         // 円の頂点数（区間長を確保して動きを滑らかに）
 const MERGE_TH = 2;           // 近接結合しきい値 mm
 const CLUSTER_R = 10;         // 交差点密集判定半径 mm
 const CLUSTER_N = 5;          // 密集判定個数
@@ -368,8 +367,10 @@ const F_TRAVEL = 3000;        // 空中移動速度
 const F_Z = 600;              // Z移動速度
 const F_DOT = Math.round(F_PRINT / 1.5);  // 点描画は1/1.5倍速
 const Z_LIFT = 1;             // パス間リフト量 mm
-const MIN_SEG = 0.25;         // 取得時の最小点間隔 mm
-const RDP_EPS = 0.12;         // 簡略化許容誤差 mm
+const MIN_SEG = 0.35;         // 取得時の最小点間隔 mm（画面表示の滑らかさ優先）
+const RDP_EPS = 0.15;         // 画面表示用の簡略化 許容誤差 mm
+const OUT_RDP = 0.35;         // G-code出力前の追加簡略化 許容誤差 mm
+const MIN_OUT_SEG = 1.0;      // G-code出力時の最小区間長 mm（細切れ動作の防止）
 
 /* ================= 状態 ================= */
 let strokes = [];             // {pts:[{x,y}(mm, canvas座標系 Y下向き)], width(px), isDot}
@@ -379,7 +380,7 @@ let cur = null;               // 描画中ストローク
 let pencilOnly = true;
 let lineWidth = 15;
 let layerPitch = 1.5;
-let layers = 2;
+let layers = 1;
 
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
@@ -436,15 +437,24 @@ function pathLen(pts){
   for(let i = 1; i < pts.length; i++) L += dist(pts[i-1], pts[i]);
   return L;
 }
-/* Ramer–Douglas–Peucker 簡略化 */
+/* 点から線分までの距離（線分の外側は端点までの距離） */
+function distToSeg(p, a, b){
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const L2 = dx * dx + dy * dy;
+  if(L2 === 0) return dist(p, a);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+/* Ramer–Douglas–Peucker 簡略化
+   始点と終点が一致する閉じた線でも正しく動くよう、無限直線ではなく
+   線分への距離で評価する。 */
 function rdp(pts, eps){
   if(pts.length < 3) return pts;
   const first = pts[0], end = last(pts);
   let maxD = 0, idx = 0;
-  const dx = end.x - first.x, dy = end.y - first.y;
-  const len = Math.hypot(dx, dy) || 1e-9;
   for(let i = 1; i < pts.length - 1; i++){
-    const d = Math.abs(dy * pts[i].x - dx * pts[i].y + end.x * first.y - end.y * first.x) / len;
+    const d = distToSeg(pts[i], first, end);
     if(d > maxD){ maxD = d; idx = i; }
   }
   if(maxD > eps){
@@ -738,6 +748,36 @@ function orderNearest(list){
   return out;
 }
 
+/* --- 出力用の頂点間引き ---
+   区間が短すぎるとプリンタが減速・停止を繰り返して動きが細切れになるため、
+   形を保ちながら区間長を確保する。 */
+function thinForOutput(pts){
+  if(pts.length < 3) return pts;
+  // 1. 許容誤差を大きめにした簡略化で不要な頂点を落とす
+  let p = rdp(pts, OUT_RDP);
+  if(p.length < 3) return p;
+  // 2. 残った頂点のうち、間隔が短すぎるものを飛ばす（形が大きく変わる角は残す）
+  const out = [p[0]];
+  for(let i = 1; i < p.length - 1; i++){
+    const d = dist(last(out), p[i]);
+    if(d < MIN_OUT_SEG){
+      // 進行方向が大きく変わる点（角）は間隔が短くても残す
+      const a = p[i - 1], b = p[i], c = p[i + 1];
+      const a1 = Math.atan2(b.y - a.y, b.x - a.x);
+      const a2 = Math.atan2(c.y - b.y, c.x - b.x);
+      let da = Math.abs(a2 - a1);
+      if(da > Math.PI) da = Math.PI * 2 - da;
+      if(da < Math.PI / 4) continue;            // 45度未満の変化なら飛ばす
+    }
+    out.push(p[i]);
+  }
+  const end = last(p);
+  // 終点は必ず残す。直前の点と近すぎる場合はその点を終点で置き換える
+  if(out.length > 1 && dist(last(out), end) < MIN_OUT_SEG * 0.5) out[out.length - 1] = end;
+  else out.push(end);
+  return out;
+}
+
 /* --- G-code 出力 --- */
 function generateGcode(){
   const originalCount = strokes.length;
@@ -746,6 +786,14 @@ function generateGcode(){
   const afterCulling = list.length;
   list = mergeNear(list);                      // A
   list = orderNearest(list);                   // B
+
+  // 出力前の頂点間引き（点から変換した円はそのまま使う）
+  let vBefore = 0, vAfter = 0;
+  for(const s of list){
+    vBefore += s.pts.length;
+    if(!s.isDot) s.pts = thinForOutput(s.pts);
+    vAfter += s.pts.length;
+  }
 
   const extArea = NOZZLE * layerPitch;
   const filArea = Math.PI * Math.pow(FILAMENT / 2, 2);
@@ -765,6 +813,7 @@ function generateGcode(){
   g.push(`; Layer pitch: ${layerPitch}mm  Layers: ${layers}`);
   g.push(`; Extrusion multiplier: ${extMult.toFixed(5)}`);
   g.push(`; Original paths: ${originalCount}, After culling: ${afterCulling}`);
+  g.push(`; Vertices: ${vBefore} -> ${vAfter} (min segment ${MIN_OUT_SEG}mm)`);
   g.push('; ===================================');
   g.push('G21 ; mm');
   g.push('G90 ; absolute positioning');
@@ -963,17 +1012,6 @@ document.getElementById('btnGcode').addEventListener('click', e => {
 document.getElementById('btnCloseG').addEventListener('click', () => gmodal.classList.remove('open'));
 gmodal.addEventListener('pointerdown', e => { if(e.target === gmodal) gmodal.classList.remove('open'); });
 
-document.getElementById('btnCopy').addEventListener('click', async () => {
-  const t = document.getElementById('gtext');
-  try{
-    await navigator.clipboard.writeText(t.value);
-    candyToast('📋 コピーしたよ！');
-  }catch(_){
-    t.focus(); t.select();
-    document.execCommand('copy');
-    candyToast('📋 コピーしたよ！');
-  }
-});
 function gcodeName(){
   const d = new Date();
   const pad = n => String(n).padStart(2, '0');
