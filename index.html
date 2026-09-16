@@ -376,7 +376,7 @@ canvas{
       <div class="tip-ico">✏️</div>
       <div class="tip-body">
         <p class="tip-title">ぬりつぶしは ちょっと にがて</p>
-        <p class="tip-text">おさとうが あふれちゃうんだ。<br><em class="tip-em">せんで かいてね！</em></p>
+        <p class="tip-text">キャンディが あふれちゃうんだ。<br><em class="tip-em">せんで かいてね！</em></p>
       </div>
     </div>
     <div class="tip">
@@ -448,10 +448,8 @@ const MERGE_TH = 2;           // 近接結合しきい値 mm
 const CLUSTER_R = 10;         // 交差点密集判定半径 mm
 const CLUSTER_N = 5;          // 密集判定個数
 const PEN_COLOR = '#ff7a2e';
-const F_PRINT = 1200;         // 通常プリント速度 mm/min
-const F_TRAVEL = 3000;        // 空中移動速度
+const F_PRINT = 600;          // 通常プリント速度 mm/min（添付版に合わせる）
 const F_Z = 600;              // Z移動速度
-const F_DOT = Math.round(F_PRINT / 1.5);  // 点描画は1/1.5倍速
 const Z_LIFT = 1;             // パス間リフト量 mm
 const MIN_SEG = 0.35;         // 取得時の最小点間隔 mm（画面表示の滑らかさ優先）
 const RDP_EPS = 0.15;         // 画面表示用の簡略化 許容誤差 mm
@@ -789,50 +787,46 @@ function cullOverlaps(list){
   return list.filter((_, i) => !removed.has(i));
 }
 
-/* --- A. 近接セグメントの自動結合（2mm以内） --- */
-function mergeNear(list){
-  const out = list.map(s => ({ isDot: s.isDot, pts: s.pts.slice() }));
-  let merged = true;
-  while(merged){
-    merged = false;
-    outer:
-    for(let i = 0; i < out.length; i++){
-      if(out[i].isDot) continue;
-      const end = last(out[i].pts);
-      for(let j = 0; j < out.length; j++){
-        if(i === j || out[j].isDot) continue;
-        if(dist(end, out[j].pts[0]) <= MERGE_TH){
-          out[i].pts = out[i].pts.concat(out[j].pts);
-          out.splice(j, 1);
-          merged = true;
-          break outer;
-        }
-      }
-    }
-  }
-  return out;
-}
+/* --- 経路の最適化（添付版の方式）---
+   最短経路への並べ替え（必要なら向きを反転）を先に行い、
+   その後で近接する端点どうしを結合する。 */
+function optimizePaths(segments, mergeThreshold){
+  if(segments.length === 0) return [];
+  if(segments.length === 1) return segments;
 
-/* --- B. 最短経路への並び替え＋反転（Nearest Neighbor with Flip） --- */
-function orderNearest(list){
-  if(list.length <= 1) return list;
-  const rem = list.slice(1);
-  const out = [list[0]];                       // 最初のストロークは固定
-  let curEnd = last(out[0].pts);
-  while(rem.length){
-    let best = 0, bestD = Infinity, flip = false;
-    for(let i = 0; i < rem.length; i++){
-      const dS = dist(curEnd, rem[i].pts[0]);
-      const dE = dist(curEnd, last(rem[i].pts));
-      if(dS < bestD){ bestD = dS; best = i; flip = false; }
-      if(dE < bestD){ bestD = dE; best = i; flip = true; }
+  // 1. 最近傍 + 反転で描く順序を決める
+  const ordered = [];
+  const used = new Array(segments.length).fill(false);
+  used[0] = true;
+  ordered.push(segments[0]);
+
+  for(let n = 1; n < segments.length; n++){
+    const curEnd = ordered[ordered.length - 1];
+    const endPt = curEnd[curEnd.length - 1];
+    let bestIdx = -1, bestDist = Infinity, bestFlip = false;
+    for(let i = 0; i < segments.length; i++){
+      if(used[i]) continue;
+      const seg = segments[i];
+      const dS = dist(endPt, seg[0]);
+      const dE = dist(endPt, seg[seg.length - 1]);
+      if(dS < bestDist){ bestDist = dS; bestIdx = i; bestFlip = false; }
+      if(dE < bestDist){ bestDist = dE; bestIdx = i; bestFlip = true; }
     }
-    const s = rem.splice(best, 1)[0];
-    if(flip) s.pts = s.pts.slice().reverse();  // 終点が近い→点順を反転
-    out.push(s);
-    curEnd = last(s.pts);
+    used[bestIdx] = true;
+    ordered.push(bestFlip ? segments[bestIdx].slice().reverse() : segments[bestIdx]);
   }
-  return out;
+
+  // 2. 連続する経路の端点が近ければ1本につなぐ
+  const merged = [ordered[0].slice()];
+  for(let i = 1; i < ordered.length; i++){
+    const prev = merged[merged.length - 1];
+    if(dist(prev[prev.length - 1], ordered[i][0]) <= mergeThreshold){
+      for(let j = 1; j < ordered[i].length; j++) prev.push(ordered[i][j]);
+    }else{
+      merged.push(ordered[i].slice());
+    }
+  }
+  return merged;
 }
 
 /* --- 出力用の頂点間引き ---
@@ -865,16 +859,18 @@ function thinForOutput(pts){
   return out;
 }
 
-/* --- G-code 出力 --- */
+/* --- G-code 出力（添付版の変換方式を採用） --- */
 function generateGcode(){
   const originalCount = strokes.length;
-  let list = toBedCoords(strokes);
-  list = cullOverlaps(list);                   // C（サイレント間引き）
-  const afterCulling = list.length;
-  list = mergeNear(list);                      // A
-  list = orderNearest(list);                   // B
 
-  // 出力前の頂点間引き（点から変換した円はそのまま使う）
+  // ベッド座標へ変換
+  let list = toBedCoords(strokes);
+
+  // 重複線の間引き（ぐるぐる描き対策）
+  list = cullOverlaps(list);
+  const afterCulling = list.length;
+
+  // 出力前の頂点間引き（細切れ動作の防止／円に変換した点はそのまま）
   let vBefore = 0, vAfter = 0;
   for(const s of list){
     vBefore += s.pts.length;
@@ -882,70 +878,104 @@ function generateGcode(){
     vAfter += s.pts.length;
   }
 
+  // 点（円に変換済み）と線を分ける
+  const dotSegs  = list.filter(s => s.isDot).map(s => s.pts);
+  let   lineSegs = list.filter(s => !s.isDot).map(s => s.pts);
+
+  // 線のみ、最短経路に並べ替え（反転あり）→ 近接端点を結合
+  lineSegs = optimizePaths(lineSegs, MERGE_TH);
+
   const extArea = NOZZLE * layerPitch;
   const filArea = Math.PI * Math.pow(FILAMENT / 2, 2);
   const extMult = extArea / filArea;           // 押し出し倍率
+  const dotFeed = Math.round(F_PRINT / 1.5);   // 点は 1/1.5 倍速
 
-  const fx = n => n.toFixed(2);
-  const fe = n => n.toFixed(5);
-  let E = 0;
-  let printLen = 0, travelLen = 0;
+  const fx = n => n.toFixed(3);
+  const fe = n => n.toFixed(4);
+  let E = 0, printLen = 0, travelLen = 0;
   let cx = 0, cy = 0;
-  const g = [];
+  const L = [];
 
-  g.push('; ===================================');
-  g.push('; Oekaki Candy Lab - Byte Bites Inc.');
-  g.push(`; Generated: ${new Date().toISOString()}`);
-  g.push(`; Bed: ${BED}x${BED}mm  Draw area: circle d${BED}mm  Nozzle: ${NOZZLE}mm  Filament: ${FILAMENT}mm`);
-  g.push(`; Layer pitch: ${layerPitch}mm  Layers: ${layers}`);
-  g.push(`; Extrusion multiplier: ${extMult.toFixed(5)}`);
-  g.push(`; Original paths: ${originalCount}, After culling: ${afterCulling}`);
-  g.push(`; Vertices: ${vBefore} -> ${vAfter} (min segment ${MIN_OUT_SEG}mm)`);
-  g.push('; ===================================');
-  g.push('G21 ; mm');
-  g.push('G90 ; absolute positioning');
-  g.push('M82 ; absolute extrusion');
-  g.push('G92 E0');
-  g.push('G28 ; home');
-  g.push('');
+  L.push('; G-Code generated by おえかきキャンディラボ');
+  L.push('; Powered by Byte Bites Inc.');
+  L.push(`; Generated: ${new Date().toISOString()}`);
+  L.push(`; Original paths: ${originalCount}, After culling: ${afterCulling}`);
+  L.push(`; Dots: ${dotSegs.length}, Lines: ${lineSegs.length}`);
+  L.push(`; Layers: ${layers}, Pitch: ${layerPitch}mm`);
+  L.push(`; Bed: ${BED}x${BED}mm (draw area: circle d${BED}mm)`);
+  L.push(`; Nozzle: ${NOZZLE}mm, Filament: ${FILAMENT}mm`);
+  L.push(`; Normal feedrate: F${F_PRINT}, Dot feedrate: F${dotFeed}`);
+  L.push(`; Extrusion multiplier: ${extMult.toFixed(5)} mm/mm`);
+  L.push(`; Vertices: ${vBefore} -> ${vAfter} (min segment ${MIN_OUT_SEG}mm)`);
+  L.push('');
+  L.push('G21 ; mm units');
+  L.push('G90 ; absolute positioning');
+  L.push('M82 ; absolute extrusion');
+  L.push('G28 ; home all axes');
+  L.push('G92 E0 ; reset extruder');
+  L.push('');
 
-  cx = 0; cy = 0;   // G28後のホーム位置
+  for(let layer = 0; layer < layers; layer++){
+    const z = layerPitch * (layer + 1);
+    L.push(`; === Layer ${layer + 1} / ${layers} — Z=${fx(z)}mm ===`);
+    L.push(`G1 Z${fx(z)} F${F_Z}`);
+    L.push('');
 
-  for(let L = 0; L < layers; L++){
-    const z = layerPitch * (L + 1);
-    g.push(`; --- Layer ${L + 1}/${layers}  Z=${fx(z)} ---`);
-    for(const s of list){
-      const p0 = s.pts[0];
-      /* E. パス間移動：Z+1mmリフト → XY移動(G0) → 元の高さへ */
-      g.push(`G0 Z${fx(z + Z_LIFT)} F${F_Z}`);
-      travelLen += dist({ x: cx, y: cy }, p0);
-      g.push(`G0 X${fx(p0.x)} Y${fx(p0.y)} F${F_TRAVEL}`);
-      g.push(`G0 Z${fx(z)} F${F_Z}`);
-      /* D. 点（円変換済み）: 到着直後に0.5秒停止＋速度1/1.5 */
-      if(s.isDot) g.push('G4 P500 ; dwell for dot');
-      const feed = s.isDot ? F_DOT : F_PRINT;
-      let prev = p0;
-      for(let i = 1; i < s.pts.length; i++){
-        const p = s.pts[i];
-        const d = dist(prev, p);
+    // ── 線を描く ──
+    lineSegs.forEach((seg, pi) => {
+      if(seg.length < 2) return;
+      const f = seg[0];
+      L.push(`; Line ${pi + 1} (${seg.length} pts)`);
+      L.push(`G1 Z${fx(z + Z_LIFT)} F${F_Z} ; lift +${Z_LIFT}mm`);
+      travelLen += dist({ x: cx, y: cy }, f);
+      L.push(`G0 X${fx(f.x)} Y${fx(f.y)} ; travel`);
+      L.push(`G1 Z${fx(z)} F${F_Z} ; lower to layer`);
+      let prev = f;
+      for(let i = 1; i < seg.length; i++){
+        const pt = seg[i];
+        const d = dist(prev, pt);
         E += d * extMult;
         printLen += d;
-        g.push(`G1 X${fx(p.x)} Y${fx(p.y)} E${fe(E)}${i === 1 ? ' F' + feed : ''}`);
-        prev = p;
+        L.push(`G1 X${fx(pt.x)} Y${fx(pt.y)} E${fe(E)} F${F_PRINT}`);
+        prev = pt;
       }
       cx = prev.x; cy = prev.y;
-    }
-    g.push('');
+      L.push('');
+    });
+
+    // ── 点を描く（滞留＋減速） ──
+    dotSegs.forEach((pts, di) => {
+      const f = pts[0];
+      L.push(`; Dot ${di + 1}`);
+      L.push(`G1 Z${fx(z + Z_LIFT)} F${F_Z} ; lift +${Z_LIFT}mm`);
+      travelLen += dist({ x: cx, y: cy }, f);
+      L.push(`G0 X${fx(f.x)} Y${fx(f.y)} ; travel to dot`);
+      L.push(`G1 Z${fx(z)} F${F_Z} ; lower to layer`);
+      L.push('G4 P500 ; dwell 0.5s for material flow');
+      let prev = f;
+      for(let i = 1; i < pts.length; i++){
+        const pt = pts[i];
+        const d = dist(prev, pt);
+        E += d * extMult;
+        printLen += d;
+        L.push(`G1 X${fx(pt.x)} Y${fx(pt.y)} E${fe(E)} F${dotFeed} ; slow dot`);
+        prev = pt;
+      }
+      cx = prev.x; cy = prev.y;
+      L.push('');
+    });
   }
 
-  const zEnd = layerPitch * layers + 10;
-  g.push('; --- End ---');
-  g.push(`G0 Z${fx(zEnd)} F${F_Z}`);
-  g.push('M84 ; motors off');
+  L.push(`G0 Z${fx(layerPitch * layers + 10)} ; lift`);
+  L.push('G28 X Y ; home XY');
+  L.push('M84 ; disable motors');
+  L.push('; end');
 
   return {
-    text: g.join('\n'),
-    stats: { originalCount, afterCulling, pathCount: list.length, printLen, travelLen, E }
+    text: L.join('\n'),
+    stats: { originalCount, afterCulling,
+             pathCount: lineSegs.length + dotSegs.length,
+             printLen, travelLen, E }
   };
 }
 
