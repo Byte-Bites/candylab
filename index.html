@@ -130,7 +130,10 @@ main{
   padding:12px 14px;border:3px solid var(--mint);
   box-shadow:0 3px 0 var(--mint-deep);
 }
-.tip:nth-child(3){border-color:var(--soda);box-shadow:0 3px 0 var(--soda-deep)}
+.tip-a{border-color:var(--mint);box-shadow:0 3px 0 var(--mint-deep)}
+.tip-b{border-color:#F0B429;box-shadow:0 3px 0 #C98A0B}
+.tip-c{border-color:var(--soda);box-shadow:0 3px 0 var(--soda-deep)}
+.tip-b .tip-em{background:#F0B429;box-shadow:0 2px 0 #C98A0B}
 .tip-ico{font-size:28px;line-height:1.1;flex:0 0 auto}
 .tip-title{
   font-size:14px;font-weight:900;margin-bottom:4px;
@@ -372,14 +375,21 @@ canvas{
 <main>
   <aside id="tips">
     <h2>おえかきの やくそく</h2>
-    <div class="tip">
+    <div class="tip tip-a">
       <div class="tip-ico">✏️</div>
       <div class="tip-body">
         <p class="tip-title">ぬりつぶしは ちょっと にがて</p>
         <p class="tip-text">キャンディが あふれちゃうんだ。<br><em class="tip-em">せんで かいてね！</em></p>
       </div>
     </div>
-    <div class="tip">
+    <div class="tip tip-b">
+      <div class="tip-ico">🔀</div>
+      <div class="tip-body">
+        <p class="tip-title">せんと せんを かさねないで</p>
+        <p class="tip-text">かさなったところが あつくなって<br>われちゃうんだ。<br><em class="tip-em">あいだを あけて かこう！</em></p>
+      </div>
+    </div>
+    <div class="tip tip-c">
       <div class="tip-ico">⭕</div>
       <div class="tip-body">
         <p class="tip-title">ちいさい てんは まるに へんしん</p>
