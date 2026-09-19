@@ -91,6 +91,10 @@ header{
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .row:last-child{margin-bottom:0}
 .row label{font-size:14px;font-weight:bold}
+.row-check{align-items:flex-start;border-top:2px dashed #EBD9C4;padding-top:12px;margin-top:2px}
+.row-check label{flex:1;cursor:pointer}
+.row-note{display:block;font-size:11px;font-weight:normal;color:#A98A6E;margin-top:3px;line-height:1.5}
+#chkFlip{width:26px;height:26px;flex:0 0 auto;accent-color:var(--mint-deep);cursor:pointer}
 .stepper{display:flex;align-items:center;gap:6px}
 .stepper button{
   font-family:inherit;padding:4px 13px;font-size:18px;font-weight:bold;border:none;
@@ -369,6 +373,13 @@ canvas{
       <span class="val" id="valLayers">1</span>
       <button data-step="l+">＋</button>
     </div>
+  </div>
+  <div class="row row-check">
+    <label for="chkFlip">
+      プリンター向け反転
+      <span class="row-note">SHOT mini 用（左右反転＋180°回転）<br>画面のプレビューは変わりません</span>
+    </label>
+    <input type="checkbox" id="chkFlip" checked>
   </div>
 </div>
 
@@ -764,6 +775,20 @@ function toBedCoords(strokeList){
   }));
 }
 
+/* --- プリンター向け反転（SHOT mini 対策）---
+   左右反転（x → BED - x）のあと、ベッド中心まわりに180度回転する。
+   この二つを合わせると、結果として上下反転（y → BED - y）と同じになる。
+   画面のプレビューには影響せず、G-code の座標だけを変換する。 */
+function applyPrinterFlip(list){
+  return list.map(s => ({
+    isDot: s.isDot,
+    pts: s.pts.map(p => {
+      const mx = BED - p.x, my = p.y;          // 左右反転
+      return { x: BED - mx, y: BED - my };     // 180度回転
+    })
+  }));
+}
+
 /* --- C. 重複線（ぐるぐる描き）の自動間引き（サイレント） --- */
 function cullOverlaps(list){
   const inters = []; // {x, y, a, b}  a,b: ストロークindex
@@ -876,6 +901,10 @@ function generateGcode(){
   // ベッド座標へ変換
   let list = toBedCoords(strokes);
 
+  // プリンター向け反転（設定でONのときのみ）
+  const flip = document.getElementById('chkFlip').checked;
+  if(flip) list = applyPrinterFlip(list);
+
   // 重複線の間引き（ぐるぐる描き対策）
   list = cullOverlaps(list);
   const afterCulling = list.length;
@@ -913,6 +942,7 @@ function generateGcode(){
   L.push(`; Dots: ${dotSegs.length}, Lines: ${lineSegs.length}`);
   L.push(`; Layers: ${layers}, Pitch: ${layerPitch}mm`);
   L.push(`; Bed: ${BED}x${BED}mm (draw area: circle d${BED}mm)`);
+  L.push(`; Printer flip: ${flip ? 'ON (mirror + rotate 180deg, for SHOT mini)' : 'OFF'}`);
   L.push(`; Nozzle: ${NOZZLE}mm, Filament: ${FILAMENT}mm`);
   L.push(`; Normal feedrate: F${F_PRINT}, Dot feedrate: F${dotFeed}`);
   L.push(`; Extrusion multiplier: ${extMult.toFixed(5)} mm/mm`);
