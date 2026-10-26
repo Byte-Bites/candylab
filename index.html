@@ -204,6 +204,30 @@ canvas{
 .tool:focus-visible{outline:3px solid var(--choco);outline-offset:3px}
 .tool-hist{--tc:var(--mint);--td:var(--mint-deep)}
 .tool-clear{--tc:var(--berry);--td:var(--berry-deep)}
+.tool-check{--tc:#F0B429;--td:#C98A0B}
+.tool-pick{--tc:var(--soda);--td:var(--soda-deep)}
+canvas.pick{cursor:pointer}
+
+/* ---------- チェック結果パネル ---------- */
+#checkPanel{
+  position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+  display:none;flex-direction:column;gap:8px;align-items:center;
+  background:#fffdf8;border:3px solid #E53935;border-radius:18px;
+  padding:12px 16px;box-shadow:0 8px 22px rgba(74,44,26,.3);
+  max-width:86%;z-index:20;
+}
+#checkPanel.open{display:flex}
+#checkPanel{pointer-events:none}          /* 文字の下にある線もタッチできるように */
+#checkPanel .check-actions button{pointer-events:auto}
+#checkMsg{font-size:14px;font-weight:bold;text-align:center;line-height:1.5;word-break:keep-all}
+.check-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.check-actions button{
+  font-family:inherit;font-size:13px;font-weight:bold;color:var(--choco);
+  border:none;border-radius:999px;padding:8px 16px;cursor:pointer;
+  background:var(--white);box-shadow:0 3px 0 rgba(74,44,26,.2);
+}
+.check-actions .btn-primary{background:#E53935;color:#fff;box-shadow:0 3px 0 #A82824}
+.check-actions button:active{transform:translateY(2px);box-shadow:none}
 .tool.on{background:var(--tc);color:#fff;transform:scale(1.05)}
 .tool.on .lbl{color:#fff}
 
@@ -381,6 +405,13 @@ canvas{
     </label>
     <input type="checkbox" id="chkFlip" checked>
   </div>
+  <div class="row row-check">
+    <label for="chkCull">
+      かさなった線を 間引く
+      <span class="row-note">オフにすると、描いた線をすべてそのまま出力します<br>（素材があふれる場合があります）</span>
+    </label>
+    <input type="checkbox" id="chkCull" checked>
+  </div>
 </div>
 
 <main>
@@ -413,6 +444,13 @@ canvas{
     <div id="wrap">
       <canvas id="cv"></canvas>
       <div id="hint"><span class="pen">✏️</span>ここに おえかきしてね！</div>
+      <div id="checkPanel">
+        <p id="checkMsg"></p>
+        <div class="check-actions">
+          <button id="btnCheckRec" class="btn-primary">おすすめの線を けす</button>
+          <button id="btnCheckClose">とじる</button>
+        </div>
+      </div>
     </div>
   </div>
 </main>
@@ -421,6 +459,8 @@ canvas{
   <button id="btnUndo" class="tool tool-hist"><span class="ico">↩️</span><span class="lbl">もどす</span></button>
   <button id="btnRedo" class="tool tool-hist"><span class="ico">↪️</span><span class="lbl">やりなおす</span></button>
   <button id="btnClear" class="tool tool-clear"><span class="ico">🗑</span><span class="lbl">ぜんぶけす</span></button>
+  <button id="btnPick" class="tool tool-pick" aria-pressed="false"><span class="ico">☝️</span><span class="lbl">えらんでけす</span></button>
+  <button id="btnCheck" class="tool tool-check"><span class="ico">🔍</span><span class="lbl">チェック</span></button>
   <button id="btnGcode" class="candy-cta"><span class="ico">🍭</span>キャンディにする！</button>
 </nav>
 
@@ -482,6 +522,9 @@ let strokes = [];             // {pts:[{x,y}(mm, canvas座標系 Y下向き)], w
 let undoStack = [];           // {type:'add'} | {type:'clear', strokes:[...]}
 let redoStack = [];           // Undoで取り消した操作（新規操作で破棄）
 let cur = null;               // 描画中ストローク
+let pickMode = false;         // タッチした線を消すモード
+let checkSet = null;          // チェック中に赤く示す線の番号（nullは非チェック）
+let recSet = null;            // おすすめで消す線（最小限）
 let pencilOnly = true;
 let lineWidth = 15;
 let layerPitch = 1.5;
@@ -518,8 +561,28 @@ function redraw(){
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = PEN_COLOR;
-  for(const st of strokes) drawStroke(st);
-  if(cur) drawStroke(cur);
+  strokes.forEach((st, i) => {
+    if(checkSet && checkSet.has(i)){
+      // プリントされない線：薄くしたうえで赤い破線を重ねる
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = PEN_COLOR;
+      drawStroke(st);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#E53935';
+      ctx.setLineDash([1.6, 1.6]);
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(st.pts[0].x, st.pts[0].y);
+      for(let k = 1; k < st.pts.length; k++) ctx.lineTo(st.pts[k].x, st.pts[k].y);
+      ctx.stroke();
+      ctx.restore();
+    }else{
+      ctx.strokeStyle = PEN_COLOR;
+      drawStroke(st);
+    }
+  });
+  if(cur){ ctx.strokeStyle = PEN_COLOR; drawStroke(cur); }
   ctx.restore();
   const hint = document.getElementById('hint');
   if(hint) hint.classList.toggle('off', strokes.length > 0 || !!cur);
@@ -617,9 +680,37 @@ function toMM(e){
   }
   return { x, y };
 }
+/* タッチした位置にある線を探す（上に描かれたものを優先） */
+function strokeAt(p){
+  for(let i = strokes.length - 1; i >= 0; i--){
+    const st = strokes[i];
+    const th = st.width / PX_PER_MM / 2 + 1.5;   // 線の半幅＋指の余裕
+    const pts = st.pts;
+    if(pts.length === 1){ if(dist(pts[0], p) <= th) return i; continue; }
+    for(let k = 1; k < pts.length; k++){
+      if(distToSeg(p, pts[k - 1], pts[k]) <= th) return i;
+    }
+  }
+  return -1;
+}
+
 cv.addEventListener('pointerdown', e => {
   if(!allowedInput(e)){ showBlockToast(); return; }
   e.preventDefault();
+
+  // 「えらんでけす」モード：タッチした線を1本消す
+  if(pickMode){
+    const i = strokeAt(toMM(e));
+    if(i < 0){ candyToast('👆 けしたい線を タッチしてね'); return; }
+    undoStack.push({ type: 'cull', items: [{ stroke: strokes[i], index: i }] });
+    redoStack.length = 0;
+    strokes.splice(i, 1);
+    if(checkSet) refreshCheck();      // チェック表示を最新の状態に更新
+    redraw();
+    return;
+  }
+
+  if(checkSet) endCheck();          // 描き始めたらチェック表示を解除
   try{ cv.setPointerCapture(e.pointerId); }catch(_){}
   cur = { pts: [toMM(e)], width: lineWidth, isDot: false, pid: e.pointerId };
   redraw();
@@ -704,6 +795,10 @@ document.getElementById('btnUndo').addEventListener('click', () => {
   }else if(a.type === 'clear'){
     strokes = a.strokes;
     redoStack.push({ type: 'clear' });
+  }else if(a.type === 'cull'){
+    const items = a.items.slice().sort((x, y) => x.index - y.index);
+    for(const it of items) strokes.splice(Math.min(it.index, strokes.length), 0, it.stroke);
+    redoStack.push({ type: 'cull', items: a.items });
   }
   redraw();
 });
@@ -716,6 +811,10 @@ document.getElementById('btnRedo').addEventListener('click', () => {
   }else if(a.type === 'clear'){
     undoStack.push({ type: 'clear', strokes });
     strokes = [];
+  }else if(a.type === 'cull'){
+    const set = new Set(a.items.map(it => it.stroke));
+    strokes = strokes.filter(s => !set.has(s));
+    undoStack.push({ type: 'cull', items: a.items });
   }
   redraw();
 });
@@ -726,6 +825,89 @@ document.getElementById('btnClear').addEventListener('click', () => {
   redoStack.length = 0;   // 新規操作でRedo履歴は破棄
   redraw();
 });
+
+/* ================= イラストチェック =================
+   G-code生成時に「線の重なりすぎ」で除かれる線を、事前に赤い破線で示す。
+   プレビューと実際のプリント結果がずれないようにするための機能。 */
+const checkPanel = document.getElementById('checkPanel');
+function endCheck(){
+  if(!checkSet) return;
+  checkSet = null; recSet = null;
+  checkPanel.classList.remove('open');
+  document.getElementById('btnCheck').classList.remove('on');
+  setPick(false);
+  redraw();
+}
+/* チェックの内容を計算して画面に反映する（線を消すたびに呼び直す） */
+function refreshCheck(){
+  const set = findCulledStrokes();
+  if(set.size === 0){
+    endCheck();
+    candyToast('✨ これで ぜんぶ プリントできるよ！');
+    return;
+  }
+  recSet = findRecommended();
+  checkSet = recSet.size ? recSet : set;     // 画面で赤く示すのはおすすめの線
+  document.getElementById('btnCheck').classList.add('on');
+  const saved = set.size - recSet.size;
+  document.getElementById('checkMsg').innerHTML =
+    `⚠️ このままだと ${set.size}本が プリントされません<br>` +
+    (saved > 0
+      ? `💡 あかい てんせんの <b>${recSet.size}本</b>だけ けせば<br>のこりの ${saved}本は のこせます`
+      : `あかい てんせんの ${recSet.size}本を けすと きれいに プリントできます`);
+  document.getElementById('btnCheckRec').textContent = `おすすめの ${recSet.size}本を けす`;
+  checkPanel.classList.add('open');
+}
+document.getElementById('btnCheck').addEventListener('click', () => {
+  if(checkSet){ endCheck(); return; }
+  if(!strokes.length){ candyToast('✏️ まだ えが ないよ！'); return; }
+  if(!cullEnabled()){
+    candyToast('✨ 間引きオフ：ぜんぶ そのまま プリントします');
+    return;
+  }
+  const set = findCulledStrokes();
+  if(set.size === 0){
+    candyToast('✨ ぜんぶ そのまま プリントできるよ！');
+    return;
+  }
+  refreshCheck();
+  setPick(true);                 // そのままタッチで線を選んで消せる状態にする
+  redraw();
+});
+
+/* ================= えらんでけす（タッチで1本ずつ消す） ================= */
+function setPick(on){
+  pickMode = on;
+  const b = document.getElementById('btnPick');
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+  cv.classList.toggle('pick', on);
+}
+document.getElementById('btnPick').addEventListener('click', () => {
+  const on = !pickMode;
+  setPick(on);
+  candyToast(on ? '☝️ けしたい線を タッチしてね' : '✏️ おえかきに もどったよ');
+});
+document.getElementById('btnCheckRec').addEventListener('click', () => applyRemoval(recSet));
+document.getElementById('btnCheckClose').addEventListener('click', endCheck);
+document.getElementById('chkCull').addEventListener('change', () => {
+  endCheck();                             // 設定が変わったら表示をリセット
+  candyToast(cullEnabled() ? '🧹 かさなった線を 間引きます'
+                           : '📝 描いた線を すべて出力します');
+});
+function applyRemoval(set){
+  if(!set || !set.size) return;
+  const items = [];
+  for(let i = strokes.length - 1; i >= 0; i--){
+    if(set.has(i)){ items.push({ stroke: strokes[i], index: i }); strokes.splice(i, 1); }
+  }
+  if(items.length){
+    undoStack.push({ type: 'cull', items });
+    redoStack.length = 0;
+    candyToast(`🧹 ${items.length}本 けして プリントできる かたちに そろえたよ`);
+  }
+  endCheck();
+}
 
 /* ================= Pencilのみトグル ================= */
 const btnPencil = document.getElementById('btnPencil');
@@ -790,7 +972,7 @@ function applyPrinterFlip(list){
 }
 
 /* --- C. 重複線（ぐるぐる描き）の自動間引き（サイレント） --- */
-function cullOverlaps(list){
+function culledIndices(list){
   const inters = []; // {x, y, a, b}  a,b: ストロークindex
   const boxes = list.map(s => bbox(s.pts));
   for(let a = 0; a < list.length; a++){
@@ -819,7 +1001,74 @@ function cullOverlaps(list){
       for(const s of set) if(s !== keep) removed.add(s);
     }
   }
+  return removed;
+}
+function cullOverlaps(list){
+  const removed = culledIndices(list);
   return list.filter((_, i) => !removed.has(i));
+}
+/* --- おすすめ削除（できるだけ少ない本数で密集を解消する）---
+   密集の原因になっている交差点を最も多く減らせる線から順に取り除き、
+   密集がなくなった時点で止める。現在の判定より消える本数が少なくなる。 */
+function recommendRemovals(list){
+  // 交差点を一度だけ求める
+  const inters = [];
+  const boxes = list.map(s => bbox(s.pts));
+  for(let a = 0; a < list.length; a++){
+    for(let b = a + 1; b < list.length; b++){
+      const A = boxes[a], B = boxes[b];
+      if(A.maxX < B.minX || B.maxX < A.minX || A.maxY < B.minY || B.maxY < A.minY) continue;
+      const pa = list[a].pts, pb = list[b].pts;
+      for(let i = 1; i < pa.length; i++){
+        for(let j = 1; j < pb.length; j++){
+          const hit = segIntersect(pa[i-1], pa[i], pb[j-1], pb[j]);
+          if(hit) inters.push({ x: hit.x, y: hit.y, a, b });
+        }
+      }
+    }
+  }
+  const removed = new Set();
+  for(let guard = 0; guard < list.length; guard++){
+    // 生きている交差点だけで密集を数える
+    const live = inters.filter(p => !removed.has(p.a) && !removed.has(p.b));
+    const dense = [];
+    for(let k = 0; k < live.length; k++){
+      let c = 0;
+      for(let m = 0; m < live.length; m++) if(dist(live[k], live[m]) <= CLUSTER_R) c++;
+      if(c >= CLUSTER_N) dense.push(live[k]);
+    }
+    if(dense.length === 0) break;              // 密集なし＝これ以上消さなくてよい
+    // 密集した交差点に最も多く関わっている線を1本選ぶ
+    const score = new Map();
+    for(const p of dense){
+      score.set(p.a, (score.get(p.a) || 0) + 1);
+      score.set(p.b, (score.get(p.b) || 0) + 1);
+    }
+    let best = -1, bestScore = -1;
+    for(const [idx, sc] of score){
+      // 同点なら後から描かれた線を優先して消す（先に描いた線を残す）
+      if(sc > bestScore || (sc === bestScore && idx > best)){ bestScore = sc; best = idx; }
+    }
+    if(best < 0) break;
+    removed.add(best);
+  }
+  return removed;
+}
+/* 画面の描画データに対する「おすすめで消す線」の番号 */
+function findRecommended(){
+  if(!cullEnabled()) return new Set();
+  return recommendRemovals(toBedCoords(strokes));
+}
+
+/* 間引き機能が有効かどうか（設定のチェックボックス） */
+function cullEnabled(){
+  const el = document.getElementById('chkCull');
+  return !el || el.checked;
+}
+/* 画面の描画データのうち、G-codeから除かれる線の番号を返す */
+function findCulledStrokes(){
+  if(!cullEnabled()) return new Set();
+  return culledIndices(toBedCoords(strokes));
 }
 
 /* --- 経路の最適化（添付版の方式）---
@@ -905,8 +1154,9 @@ function generateGcode(){
   const flip = document.getElementById('chkFlip').checked;
   if(flip) list = applyPrinterFlip(list);
 
-  // 重複線の間引き（ぐるぐる描き対策）
-  list = cullOverlaps(list);
+  // 重複線の間引き（ぐるぐる描き対策）／設定でOFFにできる
+  const cull = cullEnabled();
+  if(cull) list = cullOverlaps(list);
   const afterCulling = list.length;
 
   // 出力前の頂点間引き（細切れ動作の防止／円に変換した点はそのまま）
@@ -938,6 +1188,7 @@ function generateGcode(){
   L.push('; G-Code generated by おえかきキャンディラボ');
   L.push('; Powered by Byte Bites Inc.');
   L.push(`; Generated: ${new Date().toISOString()}`);
+  L.push(`; Overlap culling: ${cull ? 'ON' : 'OFF (all strokes kept)'}`);
   L.push(`; Original paths: ${originalCount}, After culling: ${afterCulling}`);
   L.push(`; Dots: ${dotSegs.length}, Lines: ${lineSegs.length}`);
   L.push(`; Layers: ${layers}, Pitch: ${layerPitch}mm`);
@@ -1065,16 +1316,19 @@ function buildSouvenir(){
   g.lineCap = 'round';
   g.lineJoin = 'round';
   g.strokeStyle = PEN_COLOR;
-  for(const st of strokes){
+  // 実際にプリントされる線だけを描く（記念画像と造形結果を一致させる）
+  const culled = findCulledStrokes();
+  strokes.forEach((st, si) => {
+    if(culled.has(si)) return;
     const p = st.pts;
-    if(!p.length) continue;
+    if(!p.length) return;
     g.lineWidth = st.width / PX_PER_MM;
     g.beginPath();
     g.moveTo(p[0].x, p[0].y);
     if(p.length === 1) g.lineTo(p[0].x + 0.01, p[0].y);
     for(let i = 1; i < p.length; i++) g.lineTo(p[i].x, p[i].y);
     g.stroke();
-  }
+  });
   g.restore();
 
   // タイトルと日付
@@ -1152,6 +1406,8 @@ function candyBurst(x, y, n = 22){
 const gmodal = document.getElementById('gmodal');
 document.getElementById('btnGcode').addEventListener('click', e => {
   if(!strokes.length){ candyToast('✏️ まだ えが ないよ！'); return; }
+  endCheck();                             // チェック表示は解除してから出力
+  setPick(false);
   const r = generateGcode();
   document.getElementById('gtext').value = r.text;
   const s = r.stats;
