@@ -205,8 +205,30 @@ canvas{
 .tool-hist{--tc:var(--mint);--td:var(--mint-deep)}
 .tool-clear{--tc:var(--berry);--td:var(--berry-deep)}
 .tool-check{--tc:#F0B429;--td:#C98A0B}
-.tool-pick{--tc:var(--soda);--td:var(--soda-deep)}
+.tool-mode{--tc:var(--soda);--td:var(--soda-deep)}
 canvas.pick{cursor:pointer}
+
+/* ---------- 消すモードのとき、画面全体で状態を示す ---------- */
+body.mode-erase .tool-mode{
+  --tc:var(--mint);--td:var(--mint-deep);
+  background:var(--mint);color:#fff;transform:scale(1.06);
+}
+body.mode-erase .tool-mode .lbl{color:#fff}
+body.mode-erase #wrap{
+  background:repeating-conic-gradient(from 0deg,
+    var(--soda) 0deg 18deg, #DCF1FA 18deg 36deg,
+    #9AD9F0 36deg 54deg, #DCF1FA 54deg 72deg);
+}
+body.mode-erase canvas{background:#F4FBFE}      /* 紙の色を変えて区別 */
+body.mode-erase #tips{opacity:.4;filter:grayscale(.5)}
+body.mode-erase #hint{display:none}
+#modeBadge{
+  display:none;position:absolute;left:50%;top:9%;transform:translateX(-50%);
+  background:var(--soda-deep);color:#fff;border-radius:999px;
+  padding:7px 16px;font-size:13px;font-weight:900;white-space:nowrap;
+  box-shadow:0 3px 10px rgba(74,44,26,.25);pointer-events:none;z-index:15;
+}
+body.mode-erase #modeBadge{display:block}
 
 /* ---------- チェック結果パネル ---------- */
 #checkPanel{
@@ -443,6 +465,7 @@ canvas.pick{cursor:pointer}
   <div id="stage">
     <div id="wrap">
       <canvas id="cv"></canvas>
+      <div id="modeBadge">☝️ けすモード｜けしたい線を タッチしてね</div>
       <div id="hint"><span class="pen">✏️</span>ここに おえかきしてね！</div>
       <div id="checkPanel">
         <p id="checkMsg"></p>
@@ -459,7 +482,9 @@ canvas.pick{cursor:pointer}
   <button id="btnUndo" class="tool tool-hist"><span class="ico">↩️</span><span class="lbl">もどす</span></button>
   <button id="btnRedo" class="tool tool-hist"><span class="ico">↪️</span><span class="lbl">やりなおす</span></button>
   <button id="btnClear" class="tool tool-clear"><span class="ico">🗑</span><span class="lbl">ぜんぶけす</span></button>
-  <button id="btnPick" class="tool tool-pick" aria-pressed="false"><span class="ico">☝️</span><span class="lbl">えらんでけす</span></button>
+  <button id="btnMode" class="tool tool-mode" aria-pressed="false">
+    <span class="ico" id="modeIco">☝️</span><span class="lbl" id="modeLbl">せんをけす</span>
+  </button>
   <button id="btnCheck" class="tool tool-check"><span class="ico">🔍</span><span class="lbl">チェック</span></button>
   <button id="btnGcode" class="candy-cta"><span class="ico">🍭</span>キャンディにする！</button>
 </nav>
@@ -878,15 +903,16 @@ document.getElementById('btnCheck').addEventListener('click', () => {
 /* ================= えらんでけす（タッチで1本ずつ消す） ================= */
 function setPick(on){
   pickMode = on;
-  const b = document.getElementById('btnPick');
-  b.classList.toggle('on', on);
+  const b = document.getElementById('btnMode');
   b.setAttribute('aria-pressed', String(on));
+  // ボタンには「押すとどうなるか」を出す（今の状態は画面全体の色で示す）
+  document.getElementById('modeIco').textContent = on ? '✏️' : '☝️';
+  document.getElementById('modeLbl').textContent = on ? 'かくに もどる' : 'せんをけす';
+  document.body.classList.toggle('mode-erase', on);
   cv.classList.toggle('pick', on);
 }
-document.getElementById('btnPick').addEventListener('click', () => {
-  const on = !pickMode;
-  setPick(on);
-  candyToast(on ? '☝️ けしたい線を タッチしてね' : '✏️ おえかきに もどったよ');
+document.getElementById('btnMode').addEventListener('click', () => {
+  setPick(!pickMode);
 });
 document.getElementById('btnCheckRec').addEventListener('click', () => applyRemoval(recSet));
 document.getElementById('btnCheckClose').addEventListener('click', endCheck);
