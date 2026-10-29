@@ -204,7 +204,6 @@ canvas{
 .tool:focus-visible{outline:3px solid var(--choco);outline-offset:3px}
 .tool-hist{--tc:var(--mint);--td:var(--mint-deep)}
 .tool-clear{--tc:var(--berry);--td:var(--berry-deep)}
-.tool-check{--tc:#F0B429;--td:#C98A0B}
 .tool-mode{--tc:var(--soda);--td:var(--soda-deep)}
 canvas.pick{cursor:pointer}
 
@@ -249,6 +248,12 @@ body.mode-erase #modeBadge{display:block}
   background:var(--white);box-shadow:0 3px 0 rgba(74,44,26,.2);
 }
 .check-actions .btn-primary{background:#E53935;color:#fff;box-shadow:0 3px 0 #A82824}
+.check-actions .btn-go{
+  background:linear-gradient(180deg,#FFB13D,var(--orange));color:#fff;
+  box-shadow:0 3px 0 var(--orange-deep);font-size:15px;padding:10px 22px;
+}
+#checkPanel.ready{border-color:var(--mint-deep)}
+#checkPanel.ready #checkMsg{color:#1F6B52}
 .check-actions button:active{transform:translateY(2px);box-shadow:none}
 .tool.on{background:var(--tc);color:#fff;transform:scale(1.05)}
 .tool.on .lbl{color:#fff}
@@ -460,7 +465,7 @@ body.mode-erase #modeBadge{display:block}
         <p class="tip-text">ちいさすぎると かすれちゃうから、<br>まんまるに かえておくね！</p>
       </div>
     </div>
-    <p class="tips-foot">かきおわったら スタッフに おしえてね</p>
+    <p class="tips-foot">かきおわったら<br>🍭 キャンディにする を おしてね</p>
   </aside>
   <div id="stage">
     <div id="wrap">
@@ -471,6 +476,7 @@ body.mode-erase #modeBadge{display:block}
         <p id="checkMsg"></p>
         <div class="check-actions">
           <button id="btnCheckRec" class="btn-primary">おすすめの線を けす</button>
+          <button id="btnCheckGo" class="btn-go">🍭 キャンディにする</button>
           <button id="btnCheckClose">とじる</button>
         </div>
       </div>
@@ -485,7 +491,6 @@ body.mode-erase #modeBadge{display:block}
   <button id="btnMode" class="tool tool-mode" aria-pressed="false">
     <span class="ico" id="modeIco">☝️</span><span class="lbl" id="modeLbl">せんをけす</span>
   </button>
-  <button id="btnCheck" class="tool tool-check"><span class="ico">🔍</span><span class="lbl">チェック</span></button>
   <button id="btnGcode" class="candy-cta"><span class="ico">🍭</span>キャンディにする！</button>
 </nav>
 
@@ -856,24 +861,30 @@ document.getElementById('btnClear').addEventListener('click', () => {
    プレビューと実際のプリント結果がずれないようにするための機能。 */
 const checkPanel = document.getElementById('checkPanel');
 function endCheck(){
-  if(!checkSet) return;
   checkSet = null; recSet = null;
   checkPanel.classList.remove('open');
-  document.getElementById('btnCheck').classList.remove('on');
+  checkPanel.classList.remove('ready');
   setPick(false);
+  redraw();
+}
+/* 問題なし：そのままキャンディにする流れへ誘導する */
+function showReadyPanel(){
+  checkSet = null; recSet = null;
+  setPick(false);
+  document.getElementById('checkMsg').innerHTML =
+    '✨ これで きれいに プリントできるよ！<br>スタッフに おしえてね';
+  document.getElementById('btnCheckRec').style.display = 'none';
+  document.getElementById('btnCheckGo').style.display = '';
+  checkPanel.classList.add('ready');
+  checkPanel.classList.add('open');
   redraw();
 }
 /* チェックの内容を計算して画面に反映する（線を消すたびに呼び直す） */
 function refreshCheck(){
   const set = findCulledStrokes();
-  if(set.size === 0){
-    endCheck();
-    candyToast('✨ これで ぜんぶ プリントできるよ！');
-    return;
-  }
+  if(set.size === 0){ showReadyPanel(); return; }
   recSet = findRecommended();
   checkSet = recSet.size ? recSet : set;     // 画面で赤く示すのはおすすめの線
-  document.getElementById('btnCheck').classList.add('on');
   const saved = set.size - recSet.size;
   document.getElementById('checkMsg').innerHTML =
     `⚠️ このままだと ${set.size}本が プリントされません<br>` +
@@ -881,24 +892,11 @@ function refreshCheck(){
       ? `💡 あかい てんせんの <b>${recSet.size}本</b>だけ けせば<br>のこりの ${saved}本は のこせます`
       : `あかい てんせんの ${recSet.size}本を けすと きれいに プリントできます`);
   document.getElementById('btnCheckRec').textContent = `おすすめの ${recSet.size}本を けす`;
+  document.getElementById('btnCheckRec').style.display = '';
+  document.getElementById('btnCheckGo').style.display = 'none';
+  checkPanel.classList.remove('ready');
   checkPanel.classList.add('open');
 }
-document.getElementById('btnCheck').addEventListener('click', () => {
-  if(checkSet){ endCheck(); return; }
-  if(!strokes.length){ candyToast('✏️ まだ えが ないよ！'); return; }
-  if(!cullEnabled()){
-    candyToast('✨ 間引きオフ：ぜんぶ そのまま プリントします');
-    return;
-  }
-  const set = findCulledStrokes();
-  if(set.size === 0){
-    candyToast('✨ ぜんぶ そのまま プリントできるよ！');
-    return;
-  }
-  refreshCheck();
-  setPick(true);                 // そのままタッチで線を選んで消せる状態にする
-  redraw();
-});
 
 /* ================= えらんでけす（タッチで1本ずつ消す） ================= */
 function setPick(on){
@@ -1430,10 +1428,9 @@ function candyBurst(x, y, n = 22){
 
 /* ================= G-code モーダル ================= */
 const gmodal = document.getElementById('gmodal');
-document.getElementById('btnGcode').addEventListener('click', e => {
-  if(!strokes.length){ candyToast('✏️ まだ えが ないよ！'); return; }
-  endCheck();                             // チェック表示は解除してから出力
-  setPick(false);
+/* 実際にレシピ（G-code）と記念画像を作る */
+function produceCandy(srcEl){
+  endCheck();
   const r = generateGcode();
   document.getElementById('gtext').value = r.text;
   const s = r.stats;
@@ -1441,13 +1438,26 @@ document.getElementById('btnGcode').addEventListener('click', e => {
     `パス: ${s.pathCount}本（描画${s.originalCount}本） / 造形距離: ${s.printLen.toFixed(0)}mm / 空中移動: ${s.travelLen.toFixed(0)}mm / 総E: ${s.E.toFixed(2)}`;
   renderSouvenir();                       // 記念画像を作る（UIは写り込まない）
   // お祝い演出 → 少し待ってからレシピを表示
-  const rect = e.currentTarget.getBoundingClientRect();
+  const el = srcEl || document.getElementById('btnGcode');
+  const rect = el.getBoundingClientRect();
   candyBurst(rect.left + rect.width / 2, rect.top + rect.height / 2);
   const wrap = document.getElementById('wrap');
   wrap.classList.add('wig');
   setTimeout(() => wrap.classList.remove('wig'), 1100);
   setTimeout(() => gmodal.classList.add('open'), REDUCED ? 0 : 650);
+}
+/* 🍭 を押したら、まずチェック。問題があればそれを先に知らせる */
+document.getElementById('btnGcode').addEventListener('click', e => {
+  if(!strokes.length){ candyToast('✏️ まだ えが ないよ！'); return; }
+  if(cullEnabled() && findCulledStrokes().size > 0){
+    refreshCheck();
+    setPick(true);        // そのままタッチで線を選んで消せる状態にする
+    redraw();
+    return;               // 問題が解決するまで出力しない
+  }
+  produceCandy(e.currentTarget);
 });
+document.getElementById('btnCheckGo').addEventListener('click', e => produceCandy(e.currentTarget));
 document.getElementById('btnCloseG').addEventListener('click', () => gmodal.classList.remove('open'));
 gmodal.addEventListener('pointerdown', e => { if(e.target === gmodal) gmodal.classList.remove('open'); });
 
